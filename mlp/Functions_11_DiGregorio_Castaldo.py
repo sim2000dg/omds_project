@@ -21,7 +21,6 @@ class Linear:
         self.gradient = None
         self.store = None  # Array used just to avoid useless data copying and array allocation
         self.out = None
-        self.tensor_grad = None
         self.gradient_bias = None
         self.downstream = None
         self.initialized = False
@@ -46,8 +45,9 @@ class Linear:
         :return: The downstream gradient
         """
         # Save avg. gradient w.r.t. current weights
-        np.dot(self.back_store.T, upstream_gradient, out=self.tensor_grad)
-        np.mean(self.tensor_grad, axis=0, out=self.gradient)
+        np.dot(self.back_store.T, upstream_gradient, out=self.gradient)
+        np.divide(self.gradient, self.batch_size, out=self.gradient)
+        # Adding regularization part of the gradient
         np.add(self.gradient, self.weights, out=self.gradient)
         np.add(self.gradient, self.weights, out=self.gradient)
 
@@ -68,10 +68,9 @@ class Linear:
         self.weights = np.zeros((in_shape, self.units), dtype=np.float32)
         self.bias = np.zeros(shape=self.units, dtype=np.float32)
         self.gradient = np.zeros((in_shape, self.units), dtype=np.float32)
-        self.out = np.zeros(shape=(self.batch_size, self.units), dtype=np.float32)
-        self.tensor_grad = np.zeros((self.batch_size, self.in_shape, self.units), dtype=np.float32)
-        self.downstream = np.zeroes(self.batch_size, self.in_shape, dtype=np.float32)
-        self.store = np.zeros(shape=(self.batch_size, self.units), dtype=np.float32)
+        self.out = np.zeros((self.batch_size, self.units), dtype=np.float32)
+        self.downstream = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
+        self.store = np.zeros((self.batch_size, self.units), dtype=np.float32)
         self.initialized = True
 
         return self
@@ -139,9 +138,9 @@ class HyperTangent:
         """
         self.batch_size = batch_size
         self.in_shape = in_shape
-        self.out = np.zeros(self.batch_size, self.in_shape, dtype=np.float32)
-        self.downstream = np.zeroes(self.batch_size, self.in_shape, dtype=np.float32)
-        self.denom = np.zeroes(self.batch_size, self.in_shape, dtype=np.float32)
+        self.out = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
+        self.downstream = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
+        self.denom = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
         self.initialized = True
         return self
 
@@ -168,6 +167,7 @@ class Model:
         """
         self.layers.append(layer.model_setup(batch_size=self.batch_size,
                                              in_shape=self.current_out_shape))
+        self.current_out_shape = layer.out.shape[-1]
         return self
 
     def backprop(self, upstream_gradient) -> np.array:
@@ -196,10 +196,15 @@ class Model:
         :param current_params: The parameters of the network in a 1-D NumPy array
         :return: A tuple with the value of the loss and the gradient vector
         """
+
+        if self.layers[-1].out.shape[-1] != 1:
+            raise ValueError('The last layer needs to have just one neuron, since it is the output one '
+                             'and the output is scalar valued')
+
         for layer in self.layers:
             pos = 0
             if isinstance(layer, Linear):
-                slice_dim_bias = layer.bias.shape
+                slice_dim_bias = layer.bias.shape[0]
                 slice_dim_weights = math.prod(layer.weights.shape)
                 layer.bias[:] = current_params[pos: pos+slice_dim_bias]
                 pos += slice_dim_bias
@@ -209,17 +214,18 @@ class Model:
         out = train_data
         reg = 0
         for layer in self.layers:
-            out = layer(out)  # Computing the forward pass we are
-            # also storing information necessary for the backward pass
-            reg += np.linalg.norm(layer.weights)
+            out = layer(out)  # Computing this pass we are also storing info necessary for the backward pass
+            if isinstance(layer, Linear):
+                reg += np.linalg.norm(layer.weights)
 
+        out = np.squeeze(out)
         out = 1 / (1 + np.exp(out))  # To be upgraded if we want
         cross_entropy = np.mean(labels * np.log(out) + 1 - labels * np.log(1 - out)) + self.rho * reg
 
-        downstream_grad = -labels / out + (1 - labels) / (1 - out)  # Cross-entropy gradient
+        downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (1 - np.squeeze(out))  # Cross-entropy gradient
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1-out))*downstream_grad
-        gradient = self.backprop(downstream_grad)
+        gradient = self.backprop(downstream_grad[:, np.newaxis])
 
         return cross_entropy, gradient
 
@@ -234,9 +240,10 @@ class Model:
 
 if __name__ == '__main__':
     from data_import import csv_import
-
-    train_data = csv_import(['S', 'M'], '../data.txt')
-    model = Model(64, 16)
-    model.add(Linear(2))
+    generator = np.random.default_rng(1234)
+    labels, train_data = csv_import(['S', 'M'], '../data.txt', dtype=np.float32)
+    model = Model(64, 16, 0)
+    model.add(Linear(10))
     model.add(HyperTangent(0.5))
-    model.evaluate_loss(train_data[:, :-1], train_data[:, -1])
+    model.add(Linear(1))
+    model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1], current_params=generator.normal(size=34))
