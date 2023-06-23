@@ -19,18 +19,20 @@ class Linear:
         """
         self.units = units
         self.batch_size: Optional[int] = None
-        self.back_store: Optional[np.array] = None
+        self.back_store: Optional[np.ndarray] = None
+        self.rho: Optional[float] = None
         self.in_shape: Optional[int] = None
-        self.weights: Optional[np.array] = None
-        self.bias: Optional[np.array] = None
-        self.gradient: Optional[np.array] = None
-        self.gradient_bias: Optional[np.array] = None
-        self.store: Optional[np.array] = None  # Array used just to avoid useless memory allocation
-        self.out: Optional[np.array] = None
-        self.downstream: Optional[np.array] = None
+        self.weights: Optional[np.ndarray] = None
+        self.bias: Optional[np.ndarray] = None
+        self.gradient: Optional[np.ndarray] = None
+        self.gradient_bias: Optional[np.ndarray] = None
+        self.back_reg: Optional[np.ndarray] = None  # Array used just to avoid useless memory allocation
+        self.store: Optional[np.ndarray] = None  # Array used just to avoid useless memory allocation
+        self.out: Optional[np.ndarray] = None
+        self.downstream: Optional[np.ndarray] = None
         self.initialized = False
 
-    def forward(self, input_array: np.array):
+    def forward(self, input_array: np.ndarray):
         """
         Forward pass for the Linear layer, a matrix multiplication with bias addition.
         :param input_array: A (batch_size x in_shape) NumPy array.
@@ -53,30 +55,35 @@ class Linear:
         np.dot(self.back_store.T, upstream_gradient, out=self.gradient)
         np.divide(self.gradient, self.batch_size, out=self.gradient)
         # Adding regularization part of the gradient
-        np.add(self.gradient, self.weights, out=self.gradient)
-        np.add(self.gradient, self.weights, out=self.gradient)
+        np.multiply(2*self.rho, self.weights, out=self.back_reg)
+        np.add(self.gradient, self.back_reg, out=self.gradient)
 
-        self.gradient_bias = upstream_gradient # The gradient for the bias is simply the upstream gradient; add pointer
+        # The gradient for the bias is simply the upstream gradient. We need to take the average over batch axis
+        np.mean(upstream_gradient, axis=0, out=self.gradient_bias)
 
         # Return downstream gradient
         return np.dot(upstream_gradient, np.transpose(self.weights), out=self.downstream)
 
-    def model_setup(self, batch_size: int, in_shape: int) -> Self:
+    def model_setup(self, batch_size: int, in_shape: int, rho: float) -> Self:
         """
         Method called when connecting this module to a Model object. This method initializes the module and the
         necessary arrays and attributes needed for the forward and the backward pass.
         :param batch_size: The batch size for the model.
         :param in_shape: Input shape for the layer.
-        :return: The object itself
+        :param rho: L2 regularization hyperparameter.
+        :return: The object itself.
         """
         self.batch_size = batch_size
         self.in_shape = in_shape
-        self.weights = np.zeros((in_shape, self.units), dtype=np.float32)
-        self.bias = np.zeros(shape=self.units, dtype=np.float32)
-        self.gradient = np.zeros((in_shape, self.units), dtype=np.float32)
-        self.out = np.zeros((self.batch_size, self.units), dtype=np.float32)
-        self.downstream = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
-        self.store = np.zeros((self.batch_size, self.units), dtype=np.float32)
+        self.weights = np.zeros((in_shape, self.units), dtype=np.float64)
+        self.bias = np.zeros(shape=self.units, dtype=np.float64)
+        self.gradient_bias = np.full_like(self.bias, 0)
+        self.gradient = np.full_like(self.weights, 0)
+        self.out = np.zeros((self.batch_size, self.units), dtype=np.float64)
+        self.downstream = np.zeros((self.batch_size, self.in_shape), dtype=np.float64)
+        self.store = np.full_like(self.out, 0)
+        self.back_reg = np.full_like(self.weights, 0)
+        self.rho = rho
         self.initialized = True
 
         return self
@@ -100,10 +107,10 @@ class HyperTangent:
         self.sigma = sigma
         self.in_shape: Optional[int] = None
         self.batch_size: Optional[int] = None
-        self.back_store: Optional[np.array] = None
-        self.out: Optional[np.array] = None
-        self.denom: Optional[np.array] = None  # Forward pass denominator
-        self.downstream: Optional[np.array] = None
+        self.back_store: Optional[np.ndarray] = None
+        self.out: Optional[np.ndarray] = None
+        self.denom: Optional[np.ndarray] = None  # Forward pass denominator
+        self.downstream: Optional[np.ndarray] = None
         self.initialized = False
 
     def forward(self, input_array):
@@ -127,7 +134,7 @@ class HyperTangent:
         """
         An activation function has no trained parameter, so this method only computes and propagates downstream the
         downstream gradient.
-        :param upstream_gradient: A NumPy array giving the jacobian of the loss
+        :param upstream_gradient: A NumPy array giving the gradient of the loss (already summed over the batch axis)
          w.r.t. outputs of the activation function layer.
         """
         # Save (exp(2sigma*x)+1)^2
@@ -142,7 +149,7 @@ class HyperTangent:
 
         return self.downstream
 
-    def model_setup(self, batch_size, in_shape) -> Self:
+    def model_setup(self, batch_size, in_shape, **kwargs) -> Self:
         """
         Method called when connecting this module to a Model object. This method initializes the module and the
         necessary arrays and attributes needed for the forward and the backward pass.
@@ -152,9 +159,9 @@ class HyperTangent:
         """
         self.batch_size = batch_size
         self.in_shape = in_shape
-        self.out = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
-        self.downstream = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
-        self.denom = np.zeros((self.batch_size, self.in_shape), dtype=np.float32)
+        self.out = np.zeros((self.batch_size, self.in_shape), dtype=np.float64)
+        self.downstream = np.full_like(self.out, 0)
+        self.denom = np.full_like(self.out, 0)
         self.initialized = True
         return self
 
@@ -187,12 +194,13 @@ class Model:
         """
         # Trigger initialization with batch size and input shape
         self.layers.append(layer.model_setup(batch_size=self.batch_size,
-                                             in_shape=self.current_out_shape))
+                                             in_shape=self.current_out_shape,
+                                             rho=self.rho))
         # Set current output shape for the model
         self.current_out_shape = layer.out.shape[-1]
         return self
 
-    def backprop(self, upstream_gradient) -> np.array:
+    def backprop(self, upstream_gradient) -> np.ndarray:
         """
         Backpropagation pipeline for the overall MLP model.
         :returns: The n-D gradient array, where n is the number of parameters in the network.
@@ -211,7 +219,7 @@ class Model:
 
         return gradient
 
-    def evaluate_loss(self, train_data: np.array, labels: np.array, current_params: np.array) -> tuple[float, np.array]:
+    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, current_params: np.ndarray) -> tuple[float, np.ndarray]:
         """
         Method evaluating the L2-penalized loss for the training data.
         It returns the value of the loss and the gradient.
@@ -226,9 +234,12 @@ class Model:
                              'and the output is scalar valued')
 
         # Setting the parameters in the net
+        pos = 0  # Variable storing the slice position
         for layer in self.layers:
-            pos = 0  # Variable storing the slice position
             if isinstance(layer, Linear):  # We have parameters only for the Linear layer
+                if len(current_params) < pos + 1:  # Check that number of passed parameters is enough
+                    raise ValueError('The length of the current_params array is not enough to cover '
+                                     'the number of parameters')
                 slice_dim_bias = layer.bias.shape[0]  # Get bias dimension
                 slice_dim_weights = math.prod(layer.weights.shape)  # Get number of weights in weight matrix
                 layer.bias[:] = current_params[pos: pos+slice_dim_bias]  # Set params in pre-allocated bias array
@@ -246,7 +257,7 @@ class Model:
         out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
         out = 1 / (1 + np.exp(out))  # Apply sigmoid activation
         # Cross entropy loss + regularization
-        cross_entropy = np.mean(labels * np.log(out) + 1 - labels * np.log(1 - out)) + self.rho * reg
+        cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out)) + self.rho * reg
 
         downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (1 - np.squeeze(out))  # Cross-entropy gradient
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
@@ -255,9 +266,9 @@ class Model:
 
         return cross_entropy, gradient
 
-    def evaluate(self, test_data: np.array) -> np.array:
+    def evaluate(self, test_data: np.ndarray) -> np.ndarray:
         """
-        Method returning a 1-D array of predictions
+        Method returning a 1-D array of predictions.
         :params test_data: The array (compatible with the initialized and trained model) containing the test data
         :returns: The 1-D array of predictions
         """
@@ -267,9 +278,9 @@ class Model:
 if __name__ == '__main__':
     from data_import import csv_import
     generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../data.txt', dtype=np.float32)
+    labels, train_data = csv_import(['S', 'M'], '../data.txt', dtype=np.float64)
     model = Model(64, 16, 0)
-    model.add(Linear(10))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
-    model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1], current_params=generator.normal(size=34))
+    model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1],
+                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=30)]))
