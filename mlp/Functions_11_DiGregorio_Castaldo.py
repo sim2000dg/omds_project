@@ -2,34 +2,39 @@ import numpy as np
 from typing import Self
 # from .data_import import csv_import
 import math
+from typing import Optional
 
 # Credits to Prof. Galasso's slides for guidelines for efficient backpropagation
 
 
 class Linear:
     """
-    A class representing a dense layer with given number of inputs and outputs
+    The dense layer of a MLP deep learning architecture with given number of inputs and outputs.
     """
 
-    def __init__(self, units):
+    def __init__(self, units: int):
+        """
+        Initialization method of the Linear layer.
+        :param units: The number of so-called hidden units. The output dimensionality.
+        """
         self.units = units
-        self.batch_size = None
-        self.back_store = None
-        self.in_shape = None
-        self.weights = None
-        self.bias = None
-        self.gradient = None
-        self.store = None  # Array used just to avoid useless data copying and array allocation
-        self.out = None
-        self.gradient_bias = None
-        self.downstream = None
+        self.batch_size: Optional[int] = None
+        self.back_store: Optional[np.array] = None
+        self.in_shape: Optional[int] = None
+        self.weights: Optional[np.array] = None
+        self.bias: Optional[np.array] = None
+        self.gradient: Optional[np.array] = None
+        self.gradient_bias: Optional[np.array] = None
+        self.store: Optional[np.array] = None  # Array used just to avoid useless memory allocation
+        self.out: Optional[np.array] = None
+        self.downstream: Optional[np.array] = None
         self.initialized = False
 
     def forward(self, input_array: np.array):
         """
-        Forward pass for Linear layer
-        :param input_array: A (batch_size x in_shape) array
-        :return: The output of the forward pass for this linear layer
+        Forward pass for the Linear layer, a matrix multiplication with bias addition.
+        :param input_array: A (batch_size x in_shape) NumPy array.
+        :return: The output of the forward pass for this linear layer.
         """
         if not self.initialized:
             raise AttributeError('Your layer is not inside a model, and therefore not initialized')
@@ -40,8 +45,8 @@ class Linear:
         return self.out  # Return output of forward pass
 
     def backprop(self, upstream_gradient):
-        """Returns the downstream tensor gradient for this layer, considering the whole
-        set of observations in the forward pass
+        """Returns the downstream gradient for this layer and computes the local gradient for the layer,
+        saving it in a pre-allocated array to be accessed with the complete backpropagation pipeline.
         :return: The downstream gradient
         """
         # Save avg. gradient w.r.t. current weights
@@ -51,16 +56,17 @@ class Linear:
         np.add(self.gradient, self.weights, out=self.gradient)
         np.add(self.gradient, self.weights, out=self.gradient)
 
-        self.gradient_bias = upstream_gradient
+        self.gradient_bias = upstream_gradient # The gradient for the bias is simply the upstream gradient; add pointer
 
         # Return downstream gradient
         return np.dot(upstream_gradient, np.transpose(self.weights), out=self.downstream)
 
     def model_setup(self, batch_size: int, in_shape: int) -> Self:
         """
-        Method called when connecting this module to a Model object
-        :param batch_size: The batch size for the model
-        :param in_shape: Input shape for the layer
+        Method called when connecting this module to a Model object. This method initializes the module and the
+        necessary arrays and attributes needed for the forward and the backward pass.
+        :param batch_size: The batch size for the model.
+        :param in_shape: Input shape for the layer.
         :return: The object itself
         """
         self.batch_size = batch_size
@@ -75,32 +81,37 @@ class Linear:
 
         return self
 
-    def __call__(self, input):
+    def __call__(self, input):  # call should be just forward
         return self.forward(input)
 
 
 class HyperTangent:
     """
-    A class representing a Hyperbolic Tangent activation, applied element-wise.
+    The layer for the hyperbolic tangent activation, applied element-wise.
     """
 
-    def __init__(self, sigma):
+    def __init__(self, sigma: float):
         """
-        Initialization of Hyperbolic Tangent Activation object
-        :param sigma: The sigma chosen for the activation
+        Initialization of the layer for the hyperbolic tangent activation.
+        :param sigma: The sigma chosen for the activation, a dispersion parameter for the hyperbolic tangent.
         """
         if sigma <= 0:
             raise ValueError('The value of sigma must be greater than 0')
         self.sigma = sigma
-        self.in_shape = None
-        self.batch_size = None
-        self.back_store = None
-        self.out = None
-        self.denom = None  # Forward pass denominator
-        self.downstream = None
+        self.in_shape: Optional[int] = None
+        self.batch_size: Optional[int] = None
+        self.back_store: Optional[np.array] = None
+        self.out: Optional[np.array] = None
+        self.denom: Optional[np.array] = None  # Forward pass denominator
+        self.downstream: Optional[np.array] = None
         self.initialized = False
 
     def forward(self, input_array):
+        """
+        Forward pass for the hyperbolic tangent activation layer.
+        :param input_array: A (batch_size x in_shape) NumPy array.
+        :return: The output of the forward pass for this layer.
+        """
         if not self.initialized:
             raise AttributeError('Your layer is not inside a model, and therefore not initialized')
         self.back_store = input_array
@@ -114,9 +125,10 @@ class HyperTangent:
 
     def backprop(self, upstream_gradient):
         """
-        Returns the gradient for this layer, considering
-        the whole set of observations in the forward pass
-        :param upstream_gradient: A NumPy array giving the upstream gradient w.r.t. the activation function
+        An activation function has no trained parameter, so this method only computes and propagates downstream the
+        downstream gradient.
+        :param upstream_gradient: A NumPy array giving the jacobian of the loss
+         w.r.t. outputs of the activation function layer.
         """
         # Save (exp(2sigma*x)+1)^2
         np.square(self.denom, out=self.downstream)
@@ -132,8 +144,10 @@ class HyperTangent:
 
     def model_setup(self, batch_size, in_shape) -> Self:
         """
-        Method called when connecting this module to a Model object
-        :param batch_size: The batch size for the model
+        Method called when connecting this module to a Model object. This method initializes the module and the
+        necessary arrays and attributes needed for the forward and the backward pass.
+        :param batch_size: The batch size for the model.
+        :param in_shape: Input shape for the layer.
         :return: The object itself
         """
         self.batch_size = batch_size
@@ -144,7 +158,7 @@ class HyperTangent:
         self.initialized = True
         return self
 
-    def __call__(self, input):
+    def __call__(self, input):  # call should be just forward
         return self.forward(input)
 
 
@@ -153,79 +167,91 @@ class Model:
     A class representing the whole MLP model
     """
 
-    def __init__(self, batch_size, input_shape, rho):
+    def __init__(self, batch_size: int, input_shape: int, rho: float):
+        """
+        Initialization method for MLP Model class.
+        :param batch_size: The batch size for the MLP model. It needs to be fixed for efficiency reasons (no spare obs.)
+        :param input_shape: The input shape for this model, the dimensionality of the input observations.
+        :param rho: The L2 regularization hyperparameter. Higher rho, linearly higher L2 penalty.
+        """
         self.current_out_shape = input_shape
         self.batch_size = batch_size
         self.layers: list[Linear | HyperTangent, ...] = list()
-        self.rho: float = rho  # L2 regularization
+        self.rho = rho  # L2 regularization
 
     def add(self, layer: Linear | HyperTangent) -> Self:
         """
-        Method adding a layer to the model
-        :param layer: The layer object, initialized
-        :return: The object itself
+        Method adding a layer to the model. The method also triggers layer initialization.
+        :param layer: The layer object.
+        :return: The object itself.
         """
+        # Trigger initialization with batch size and input shape
         self.layers.append(layer.model_setup(batch_size=self.batch_size,
                                              in_shape=self.current_out_shape))
+        # Set current output shape for the model
         self.current_out_shape = layer.out.shape[-1]
         return self
 
     def backprop(self, upstream_gradient) -> np.array:
         """
-        Method starting the backpropagation chain in order to get the overall gradient out
-        :returns: The n-D gradient array, where n is the number of parameters in the network
+        Backpropagation pipeline for the overall MLP model.
+        :returns: The n-D gradient array, where n is the number of parameters in the network.
         """
-        gradient_list = list()
-        for layer in reversed(self.layers):
-            upstream_gradient = layer.backprop(upstream_gradient)
-            if isinstance(layer, Linear):
-                local_gradient = layer.gradient
-                gradient_bias = layer.gradient_bias
-                gradient_list.extend([local_gradient, gradient_bias])
+        gradient_list = list()  # List of gradient arrays
+        for layer in reversed(self.layers):  # Go backwards in list of layers
+            upstream_gradient = layer.backprop(upstream_gradient)  # Get upstream gradient for following layer
+            if isinstance(layer, Linear):  # If layer is linear, layer.backprop also computes local gradient
+                local_gradient = layer.gradient   # Pointer to current local gradient
+                gradient_bias = layer.gradient_bias  # Pointers to current bias gradient
+                gradient_list.extend([local_gradient, gradient_bias])   # Extend gradient list with two pointers
 
+        # Flatten everything in C-contigous ordering
         gradient_list = [np.reshape(x, -1) for x in reversed(gradient_list)]
-        gradient = np.concatenate(gradient_list)
+        gradient = np.concatenate(gradient_list)  # Concatenate the gradient vectors in one long gradient vector
 
         return gradient
 
     def evaluate_loss(self, train_data: np.array, labels: np.array, current_params: np.array) -> tuple[float, np.array]:
         """
-        Method evaluating the L2-penalized loss for the training data. It returns the value of the loss and the gradient
-        :param train_data: The training data, as a NumPy array
-        :param labels: The response data, as a 1-D NumPy array
-        :param current_params: The parameters of the network in a 1-D NumPy array
-        :return: A tuple with the value of the loss and the gradient vector
+        Method evaluating the L2-penalized loss for the training data.
+        It returns the value of the loss and the gradient.
+        :param train_data: The training data, as a NumPy array.
+        :param labels: The response data, as a 1-D NumPy array.
+        :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
+        :return: A tuple with the value of the loss and the gradient vector.
         """
 
         if self.layers[-1].out.shape[-1] != 1:
             raise ValueError('The last layer needs to have just one neuron, since it is the output one '
                              'and the output is scalar valued')
 
+        # Setting the parameters in the net
         for layer in self.layers:
-            pos = 0
-            if isinstance(layer, Linear):
-                slice_dim_bias = layer.bias.shape[0]
-                slice_dim_weights = math.prod(layer.weights.shape)
-                layer.bias[:] = current_params[pos: pos+slice_dim_bias]
-                pos += slice_dim_bias
-                layer.weights.flat[:] = current_params[pos: pos+slice_dim_weights]
-                pos += slice_dim_weights
+            pos = 0  # Variable storing the slice position
+            if isinstance(layer, Linear):  # We have parameters only for the Linear layer
+                slice_dim_bias = layer.bias.shape[0]  # Get bias dimension
+                slice_dim_weights = math.prod(layer.weights.shape)  # Get number of weights in weight matrix
+                layer.bias[:] = current_params[pos: pos+slice_dim_bias]  # Set params in pre-allocated bias array
+                pos += slice_dim_bias  # Update slice position w.r.t. input 1-D params array
+                layer.weights.flat[:] = current_params[pos: pos+slice_dim_weights]  # Set params in weights array
+                pos += slice_dim_weights  # Update slice position w.r.t. input 1-D params array
 
-        out = train_data
-        reg = 0
-        for layer in self.layers:
+        out = train_data  # Initialize layer input
+        reg = 0  # Initialize L2 penalty
+        for layer in self.layers:  # Forward pass, layer per layer
             out = layer(out)  # Computing this pass we are also storing info necessary for the backward pass
-            if isinstance(layer, Linear):
+            if isinstance(layer, Linear):  # If layer is linear, we add to the penalty the norm of the weight matrix
                 reg += np.linalg.norm(layer.weights)
 
-        out = np.squeeze(out)
-        out = 1 / (1 + np.exp(out))  # To be upgraded if we want
+        out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
+        out = 1 / (1 + np.exp(out))  # Apply sigmoid activation
+        # Cross entropy loss + regularization
         cross_entropy = np.mean(labels * np.log(out) + 1 - labels * np.log(1 - out)) + self.rho * reg
 
         downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (1 - np.squeeze(out))  # Cross-entropy gradient
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1-out))*downstream_grad
-        gradient = self.backprop(downstream_grad[:, np.newaxis])
+        gradient = self.backprop(downstream_grad[:, np.newaxis])  # Start the backpropagation pipeline
 
         return cross_entropy, gradient
 
