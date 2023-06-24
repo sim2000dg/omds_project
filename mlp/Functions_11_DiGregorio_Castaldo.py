@@ -255,7 +255,7 @@ class Model:
                 reg += np.linalg.norm(layer.weights)
 
         out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
-        out = 1 / (1 + np.exp(out))  # Apply sigmoid activation
+        out = 1 / (1 + np.exp(-out))  # Apply sigmoid activation
         # Cross entropy loss + regularization
         cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out)) + self.rho * reg
 
@@ -269,10 +269,22 @@ class Model:
     def evaluate(self, test_data: np.ndarray) -> np.ndarray:
         """
         Method returning a 1-D array of predictions.
-        :params test_data: The array (compatible with the initialized and trained model) containing the test data
-        :returns: The 1-D array of predictions
+        :params test_data: The array (compatible with the initialized and trained model) containing the test data.
+        :returns: The 1-D array of predictions.
         """
-        pass
+        # This method is not really optimized for performance, but evaluation for prediction is far less problematic
+        # than the one for training, since just one pass is required.
+        output = test_data
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                output = output @ layer.weights
+                output += layer.bias
+            elif isinstance(layer, HyperTangent):
+                output = np.exp(layer.sigma*output)
+                output = (output-1)/(output+1)
+
+        output = 1 / (1 + np.exp(-output))
+        return output
 
 
 if __name__ == '__main__':
@@ -280,7 +292,8 @@ if __name__ == '__main__':
     generator = np.random.default_rng(1234)
     labels, train_data = csv_import(['S', 'M'], '../data.txt', dtype=np.float64)
     model = Model(64, 16, 0)
+    model.add(Linear(10))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
     model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1],
-                        current_params=np.concatenate([np.array([0.1, 0.1+1e-5]), generator.normal(size=15)]))
+                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=171)]))
