@@ -257,7 +257,7 @@ class Model:
         out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
         out = 1 / (1 + np.exp(out))  # Apply sigmoid activation
         # Cross entropy loss + regularization
-        cross_entropy = -np.mean(labels * np.log(out) - (1 - labels) * np.log(1 - out)) + self.rho * reg
+        cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out)) + self.rho * reg
 
         downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (1 - np.squeeze(out))  # Cross-entropy gradient
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
@@ -283,4 +283,4 @@ if __name__ == '__main__':
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
     model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1],
-                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=30)]))
+                        current_params=np.concatenate([np.array([0.1, 0.1+1e-5]), generator.normal(size=15)]))
