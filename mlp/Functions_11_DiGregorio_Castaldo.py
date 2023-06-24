@@ -266,6 +266,45 @@ class Model:
 
         return cross_entropy, gradient
 
+    def gradient_check(self, train_data: np.array, labels: np.array, current_params: np.array,
+                       epsilon: float = 1e-3) -> str:
+        """
+        Method returning the Euclidean distance between the numeric gradient and the output from the backprop pipeline,
+        normalized by the sum of the norms of the vectors loss for the training data.
+
+        :param train_data: The training data, as a NumPy array.
+        :param labels: The response data, as a 1-D NumPy array.
+        :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
+        :param epsilon: Small constant
+        :return The euclidean distance between the numeric gradient and the backprop gradient
+        """
+
+        output_plus = np.zeros(current_params.shape[0], dtype=np.float32)
+        for elem in range(len(current_params)):
+            current_params_plus = current_params.copy()
+            # adding epsilon to only one component of the entire vector of the parameters
+            current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
+            # start evaluate loss pipeline
+            output_plus[elem] = self.evaluate_loss(train_data, labels, current_params_plus)[0]
+
+        output_minus = np.zeros(current_params.shape[0], dtype=np.float32)
+        for elem in range(len(current_params)):
+            current_params_minus = current_params.copy()
+            # subtracting epsilon to only one component of the entire vector of the parameters
+            current_params_minus[elem] -= epsilon
+            # start evaluate loss pipeline
+            output_minus[elem] = self.evaluate_loss(train_data, labels, current_params_minus)[0]
+
+        grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
+        # start the pipeline to retrieve the backprop gradient
+        gradient = self.evaluate_loss(train_data, labels, current_params)[1]
+
+        # compute the Euclidean distance normlaized
+        numerator = np.linalg.norm(gradient - grad_approx)
+        denominator = np.linalg.norm(gradient) + np.linalg.norm(grad_approx)
+
+        return numerator / denominator
+
     def evaluate(self, test_data: np.ndarray) -> np.ndarray:
         """
         Method returning a 1-D array of predictions.
@@ -295,5 +334,5 @@ if __name__ == '__main__':
     model.add(Linear(10))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
-    model.evaluate_loss(train_data[:64, :-1], train_data[:64, -1],
-                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=171)]))
+    model.gradient_check(train_data[:64, :-1], train_data[:64, -1],
+                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]))
