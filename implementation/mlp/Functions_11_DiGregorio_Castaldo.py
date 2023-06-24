@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Self
-# from .data_import import csv_import
+# from ..data_import import csv_import
 import math
 from typing import Optional
 
@@ -252,7 +252,7 @@ class Model:
         for layer in self.layers:  # Forward pass, layer per layer
             out = layer(out)  # Computing this pass we are also storing info necessary for the backward pass
             if isinstance(layer, Linear):  # If layer is linear, we add to the penalty the norm of the weight matrix
-                reg += np.linalg.norm(layer.weights)
+                reg += np.linalg.norm(layer.weights)**2
 
         out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
         out = 1 / (1 + np.exp(-out))  # Apply sigmoid activation
@@ -275,8 +275,8 @@ class Model:
         :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
         :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
-        :param epsilon: Small constant
-        :return The euclidean distance between the numeric gradient and the backprop gradient
+        :param epsilon: Small constant.
+        :return The Euclidean distance between the numeric gradient and the backprop gradient.
         """
 
         output_plus = np.zeros(current_params.shape[0], dtype=np.float32)
@@ -299,7 +299,7 @@ class Model:
         # start the pipeline to retrieve the backprop gradient
         gradient = self.evaluate_loss(train_data, labels, current_params)[1]
 
-        # compute the Euclidean distance normlaized
+        # compute the Euclidean distance normalized
         numerator = np.linalg.norm(gradient - grad_approx)
         denominator = np.linalg.norm(gradient) + np.linalg.norm(grad_approx)
 
@@ -327,9 +327,9 @@ class Model:
 
 
 if __name__ == '__main__':
-    from data_import import csv_import
+    from implementation.data_import import csv_import
     generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../data.txt', dtype=np.float64)
+    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64)
     model = Model(64, 16, 0)
     model.add(Linear(10))
     model.add(HyperTangent(0.5))

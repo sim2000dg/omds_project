@@ -14,7 +14,7 @@ def csv_import(targets: list[str, ...], path: str, dtype: np.dtype) -> tuple[lis
     out_array = pd.read_csv(path)  # Read CSV
     out_array = out_array.loc[out_array['Y'].isin(targets)]  # Filter out observations related to rel. variables
     ord_targets, out_array.iloc[:, 0] = np.unique(out_array.iloc[:, 0], return_inverse=True)  # Encode target
-    out_array = out_array.to_numpy(dtype=np.float32)
+    out_array = out_array.to_numpy(dtype=dtype)
     out_array[:, [0, -1]] = out_array[:, [-1, 0]]  # Swap columns (target last)
 
     out_array[:, :-1] = (out_array[:, :-1]-np.mean(out_array[:, :-1], axis=0))/np.std(out_array[:, :-1])  # standardize
