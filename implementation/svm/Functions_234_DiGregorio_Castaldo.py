@@ -13,16 +13,16 @@ class GaussianSVM:
         self.gamma: float = gamma
 
     def cvxopt_fit(self, train_data: np.ndarray, labels: np.ndarray) -> Self:
-        self.gram = pairwise_distances(train_data, metric=self.gaussian_kernel, gamma=self.gamma)
+        self.gram = matrix(pairwise_distances(train_data, metric=self.gaussian_kernel, gamma=self.gamma), tc='d')
         A = matrix(labels, (1, len(labels)))
         q = matrix(-np.ones(len(labels), dtype=np.float64))
         b = matrix([0], tc='d')
-        h = np.concatenate([np.zeros(len(labels), dtype=np.float64),
-                           np.repeat(self.inv_reg, len(labels))])
-        G = spmatrix(np.concatenate([np.repeat(float(-1), len(labels)),
-                                    np.repeat(float(1), len(labels))]),
-                     I=np.arange(0, len(labels)),
-                     J=np.arange(0, len(labels)))
+        h = matrix(np.concatenate([np.zeros(len(labels), dtype=np.float64),
+                                   np.repeat(self.inv_reg, len(labels))]), tc='d')
+        G = spmatrix([-1]*len(labels)+[1]*len(labels),
+                     I=range(2*len(labels)),
+                     J=2*list(range(len(labels))),
+                     tc='d')
 
         dual_sol = qp(self.gram, q, G, h, A, b)
         pass

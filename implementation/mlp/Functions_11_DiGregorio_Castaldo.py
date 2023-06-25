@@ -335,4 +335,4 @@ if __name__ == '__main__':
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
     model.gradient_check(train_data[:64, :-1], train_data[:64, -1],
-                        current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]))
+                         current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]))
