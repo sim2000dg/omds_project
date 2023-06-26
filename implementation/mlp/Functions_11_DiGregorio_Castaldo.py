@@ -281,38 +281,41 @@ class Model:
 
         return cross_entropy, gradient
 
-    def gradient_check(self, train_data: np.array, labels: np.array, current_params: np.array,
-                       epsilon: float = 1e-3) -> str:
+    def gradient_check(self, train_data: np.array, labels: np.array, epsilon: float = 1e-3) -> str:
         """
         Method returning the Euclidean distance between the numeric gradient and the output from the backprop pipeline,
         normalized by the sum of the norms of the vectors loss for the training data.
 
         :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
-        :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
         :param epsilon: Small constant.
         :return The Euclidean distance between the numeric gradient and the backprop gradient.
         """
+        current_params = self.weights
 
-        output_plus = np.zeros(current_params.shape[0], dtype=np.float32)
+        output_plus = np.zeros(current_params.shape[0], dtype=np.float64)
         for elem in range(len(current_params)):
             current_params_plus = current_params.copy()
             # adding epsilon to only one component of the entire vector of the parameters
             current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
+            self.weights = current_params_plus
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(train_data, labels, current_params_plus)[0]
+            output_plus[elem] = self.evaluate_loss(train_data, labels)[0]
 
-        output_minus = np.zeros(current_params.shape[0], dtype=np.float32)
+
+        output_minus = np.zeros(current_params.shape[0], dtype=np.float64)
         for elem in range(len(current_params)):
             current_params_minus = current_params.copy()
             # subtracting epsilon to only one component of the entire vector of the parameters
             current_params_minus[elem] -= epsilon
+            self.weights = current_params_minus
             # start evaluate loss pipeline
-            output_minus[elem] = self.evaluate_loss(train_data, labels, current_params_minus)[0]
+            output_minus[elem] = self.evaluate_loss(train_data, labels)[0]
+
 
         grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
         # start the pipeline to retrieve the backprop gradient
-        gradient = self.evaluate_loss(train_data, labels, current_params)[1]
+        gradient = self.evaluate_loss(train_data, labels)[1]
 
         # compute the Euclidean distance normalized
         numerator = np.linalg.norm(gradient - grad_approx)
@@ -404,7 +407,6 @@ class AdamOptimizer:
         return self
 
 
-
 def cross_validation(train_data: np.array, labels: np.array, model: Model, k_folds: int):
     """
 
@@ -444,6 +446,7 @@ if __name__ == '__main__':
     train = np.delete(train_data, idx, axis=0)
 
     model_train = Model(train.shape[0], 16, hidden_layer_sizes=[HyperTangent(0.5), Linear(1)], rho=1e-4)
+    model_train.gradient_check(train[:, :-1], train[:, -1])
     model_dev = Model(dev.shape[0], 16, [HyperTangent(0.5), Linear(1)], rho=1e-4)
 
     optimizer = AdamOptimizer(lr=1e-3, p1=0.9, p2=0.999, delta=1e-8, model=model_train)
