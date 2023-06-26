@@ -301,6 +301,7 @@ class Model:
             self.weights = current_params_plus
             # start evaluate loss pipeline
             output_plus[elem] = self.evaluate_loss(train_data, labels)[0]
+            self.weights = current_params
 
 
         output_minus = np.zeros(current_params.shape[0], dtype=np.float64)
@@ -311,6 +312,7 @@ class Model:
             self.weights = current_params_minus
             # start evaluate loss pipeline
             output_minus[elem] = self.evaluate_loss(train_data, labels)[0]
+            self.weights = current_params
 
 
         grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
