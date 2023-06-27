@@ -1,8 +1,12 @@
 import numpy as np
 from typing import Self
+
 # from ..data_import import csv_import
 import math
-from typing import Optional
+from typing import Optional, Iterator
+from scipy.optimize import minimize, OptimizeResult
+import math
+
 
 # Credits to Prof. Galasso's slides for guidelines for efficient backpropagation
 
@@ -26,8 +30,12 @@ class Linear:
         self.bias: Optional[np.ndarray] = None
         self.gradient: Optional[np.ndarray] = None
         self.gradient_bias: Optional[np.ndarray] = None
-        self.back_reg: Optional[np.ndarray] = None  # Array used just to avoid useless memory allocation
-        self.store: Optional[np.ndarray] = None  # Array used just to avoid useless memory allocation
+        self.back_reg: Optional[
+            np.ndarray
+        ] = None  # Array used just to avoid useless memory allocation
+        self.store: Optional[
+            np.ndarray
+        ] = None  # Array used just to avoid useless memory allocation
         self.out: Optional[np.ndarray] = None
         self.downstream: Optional[np.ndarray] = None
         self.initialized = False
@@ -39,7 +47,9 @@ class Linear:
         :return: The output of the forward pass for this linear layer.
         """
         if not self.initialized:
-            raise AttributeError('Your layer is not inside a model, and therefore not initialized')
+            raise AttributeError(
+                "Your layer is not inside a model, and therefore not initialized"
+            )
         self.back_store = input_array  # Save the input array for backpropagation
 
         np.dot(input_array, self.weights, out=self.store)  # Matrix multiplication
@@ -55,14 +65,16 @@ class Linear:
         np.dot(self.back_store.T, upstream_gradient, out=self.gradient)
         np.divide(self.gradient, self.batch_size, out=self.gradient)
         # Adding regularization part of the gradient
-        np.multiply(2*self.rho, self.weights, out=self.back_reg)
+        np.multiply(2 * self.rho, self.weights, out=self.back_reg)
         np.add(self.gradient, self.back_reg, out=self.gradient)
 
         # The gradient for the bias is simply the upstream gradient. We need to take the average over batch axis
         np.mean(upstream_gradient, axis=0, out=self.gradient_bias)
 
         # Return downstream gradient
-        return np.dot(upstream_gradient, np.transpose(self.weights), out=self.downstream)
+        return np.dot(
+            upstream_gradient, np.transpose(self.weights), out=self.downstream
+        )
 
     def model_setup(self, batch_size: int, in_shape: int, rho: float) -> Self:
         """
@@ -103,7 +115,7 @@ class HyperTangent:
         :param sigma: The sigma chosen for the activation, a dispersion parameter for the hyperbolic tangent.
         """
         if sigma <= 0:
-            raise ValueError('The value of sigma must be greater than 0')
+            raise ValueError("The value of sigma must be greater than 0")
         self.sigma = sigma
         self.in_shape: Optional[int] = None
         self.batch_size: Optional[int] = None
@@ -120,7 +132,9 @@ class HyperTangent:
         :return: The output of the forward pass for this layer.
         """
         if not self.initialized:
-            raise AttributeError('Your layer is not inside a model, and therefore not initialized')
+            raise AttributeError(
+                "Your layer is not inside a model, and therefore not initialized"
+            )
         self.back_store = input_array
         np.multiply(input_array, 2 * self.sigma, out=self.out)
         np.exp(self.out, out=self.out)
@@ -185,6 +199,11 @@ class Model:
         self.batch_size = batch_size
         self.layers: list[Linear | HyperTangent, ...] = list()
         self.rho = rho  # L2 regularization
+        self.num_obs: Optional[int] = None
+        self.generator: Optional[np.random._generator.Generator] = None
+        self.epochs: Optional[int] = None
+        self.yielder: Optional[Iterator] = None
+        self.completed_train: bool = False
 
     def add(self, layer: Linear | HyperTangent) -> Self:
         """
@@ -193,9 +212,13 @@ class Model:
         :return: The object itself.
         """
         # Trigger initialization with batch size and input shape
-        self.layers.append(layer.model_setup(batch_size=self.batch_size,
-                                             in_shape=self.current_out_shape,
-                                             rho=self.rho))
+        self.layers.append(
+            layer.model_setup(
+                batch_size=self.batch_size,
+                in_shape=self.current_out_shape,
+                rho=self.rho,
+            )
+        )
         # Set current output shape for the model
         self.current_out_shape = layer.out.shape[-1]
         return self
@@ -207,67 +230,127 @@ class Model:
         """
         gradient_list = list()  # List of gradient arrays
         for layer in reversed(self.layers):  # Go backwards in list of layers
-            upstream_gradient = layer.backprop(upstream_gradient)  # Get upstream gradient for following layer
-            if isinstance(layer, Linear):  # If layer is linear, layer.backprop also computes local gradient
-                local_gradient = layer.gradient   # Pointer to current local gradient
+            upstream_gradient = layer.backprop(
+                upstream_gradient
+            )  # Get upstream gradient for following layer
+            if isinstance(
+                layer, Linear
+            ):  # If layer is linear, layer.backprop also computes local gradient
+                local_gradient = layer.gradient  # Pointer to current local gradient
                 gradient_bias = layer.gradient_bias  # Pointers to current bias gradient
-                gradient_list.extend([local_gradient, gradient_bias])   # Extend gradient list with two pointers
+                gradient_list.extend(
+                    [local_gradient, gradient_bias]
+                )  # Extend gradient list with two pointers
 
         # Flatten everything in C-contigous ordering
         gradient_list = [np.reshape(x, -1) for x in reversed(gradient_list)]
-        gradient = np.concatenate(gradient_list)  # Concatenate the gradient vectors in one long gradient vector
+        gradient = np.concatenate(
+            gradient_list
+        )  # Concatenate the gradient vectors in one long gradient vector
 
         return gradient
 
-    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, current_params: np.ndarray) -> tuple[float, np.ndarray]:
+    def evaluate_loss(
+        self,
+        current_params: np.ndarray,
+        train_data: np.ndarray,
+        labels: np.ndarray,
+        epochs: int,
+        seed: int,
+    ) -> tuple[float, np.ndarray]:
         """
         Method evaluating the L2-penalized loss for the training data.
         It returns the value of the loss and the gradient.
+        :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
         :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
-        :param current_params: The **ordered** parameters of the network in a 1-D NumPy array.
+        :param seed: Seed for reproducible training.
+        :param epochs: Number of epochs for training.
         :return: A tuple with the value of the loss and the gradient vector.
         """
-
         if self.layers[-1].out.shape[-1] != 1:
-            raise ValueError('The last layer needs to have just one neuron, since it is the output one '
-                             'and the output is scalar valued')
+            raise ValueError(
+                "The last layer needs to have just one neuron, since it is the output one "
+                "and the output is scalar valued"
+            )
+
+        if self.num_obs is None:
+            self.num_obs = len(train_data)
+        if self.generator is None:
+            self.generator = np.random.default_rng(seed)
+        if self.epochs is None:
+            self.epochs = epochs
 
         # Setting the parameters in the net
         pos = 0  # Variable storing the slice position
         for layer in self.layers:
-            if isinstance(layer, Linear):  # We have parameters only for the Linear layer
-                if len(current_params) < pos + 1:  # Check that number of passed parameters is enough
-                    raise ValueError('The length of the current_params array is not enough to cover '
-                                     'the number of parameters')
+            if isinstance(
+                layer, Linear
+            ):  # We have parameters only for the Linear layer
+                if (
+                    len(current_params) < pos + 1
+                ):  # Check that number of passed parameters is enough
+                    raise ValueError(
+                        "The length of the current_params array is not enough to cover "
+                        "the number of parameters"
+                    )
                 slice_dim_bias = layer.bias.shape[0]  # Get bias dimension
-                slice_dim_weights = math.prod(layer.weights.shape)  # Get number of weights in weight matrix
-                layer.bias[:] = current_params[pos: pos+slice_dim_bias]  # Set params in pre-allocated bias array
+                slice_dim_weights = math.prod(
+                    layer.weights.shape
+                )  # Get number of weights in weight matrix
+                layer.bias[:] = current_params[
+                    pos : pos + slice_dim_bias
+                ]  # Set params in pre-allocated bias array
                 pos += slice_dim_bias  # Update slice position w.r.t. input 1-D params array
-                layer.weights.flat[:] = current_params[pos: pos+slice_dim_weights]  # Set params in weights array
+                layer.weights.flat[:] = current_params[
+                    pos : pos + slice_dim_weights
+                ]  # Set params in weights array
                 pos += slice_dim_weights  # Update slice position w.r.t. input 1-D params array
 
-        out = train_data  # Initialize layer input
+        if self.yielder is None:
+            self.yielder = self.batch_yielder(train_data, labels).__iter__()
+
+        out, labels, it = next(self.yielder)  # Initialize layer input and labels
+        if it == self.epochs * (len(train_data) // self.batch_size):
+            self.completed_train = True
         reg = 0  # Initialize L2 penalty
         for layer in self.layers:  # Forward pass, layer per layer
-            out = layer(out)  # Computing this pass we are also storing info necessary for the backward pass
-            if isinstance(layer, Linear):  # If layer is linear, we add to the penalty the norm of the weight matrix
-                reg += np.linalg.norm(layer.weights)**2
+            out = layer(
+                out
+            )  # Computing this pass we are also storing info necessary for the backward pass
+            if isinstance(
+                layer, Linear
+            ):  # If layer is linear, we add to the penalty the norm of the weight matrix
+                reg += np.linalg.norm(layer.weights) ** 2
 
-        out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
+        out = np.squeeze(
+            out
+        )  # Squeeze the final output to avoid problems with broadcasting
         out = 1 / (1 + np.exp(-out))  # Apply sigmoid activation
         # Cross entropy loss + regularization
-        cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out)) + self.rho * reg
+        cross_entropy = (
+            -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out))
+            + self.rho * reg
+        )
 
-        downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (1 - np.squeeze(out))  # Cross-entropy gradient
+        downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (
+            1 - np.squeeze(out)
+        )  # Cross-entropy gradient
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
-        downstream_grad = (out * (1-out))*downstream_grad
-        gradient = self.backprop(downstream_grad[:, np.newaxis])  # Start the backpropagation pipeline
+        downstream_grad = (out * (1 - out)) * downstream_grad
+        gradient = self.backprop(
+            downstream_grad[:, np.newaxis]
+        )  # Start the backpropagation pipeline
 
-        return cross_entropy, gradient
+        return cross_entropy, gradient, self.completed_train
 
-    def gradient_check(self, train_data: np.array, labels: np.array, current_params: np.array,
-                       epsilon: float = 1e-3) -> str:
+    def gradient_check(
+        self,
+        train_data: np.array,
+        labels: np.array,
+        current_params: np.array,
+        epsilon: float = 1e-3,
+    ) -> str:
         """
         Method returning the Euclidean distance between the numeric gradient and the output from the backprop pipeline,
         normalized by the sum of the norms of the vectors loss for the training data.
@@ -283,9 +366,13 @@ class Model:
         for elem in range(len(current_params)):
             current_params_plus = current_params.copy()
             # adding epsilon to only one component of the entire vector of the parameters
-            current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
+            current_params_plus[
+                elem
+            ] += epsilon  # adding epsilon to only one component of the entire vector of the
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(train_data, labels, current_params_plus)[0]
+            output_plus[elem] = self.evaluate_loss(
+                train_data, labels, current_params_plus
+            )[0]
 
         output_minus = np.zeros(current_params.shape[0], dtype=np.float32)
         for elem in range(len(current_params)):
@@ -293,9 +380,13 @@ class Model:
             # subtracting epsilon to only one component of the entire vector of the parameters
             current_params_minus[elem] -= epsilon
             # start evaluate loss pipeline
-            output_minus[elem] = self.evaluate_loss(train_data, labels, current_params_minus)[0]
+            output_minus[elem] = self.evaluate_loss(
+                train_data, labels, current_params_minus
+            )[0]
 
-        grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
+        grad_approx = (output_plus - output_minus) / (
+            2 * epsilon
+        )  # computing approximation for the gradient
         # start the pipeline to retrieve the backprop gradient
         gradient = self.evaluate_loss(train_data, labels, current_params)[1]
 
@@ -319,20 +410,76 @@ class Model:
                 output = output @ layer.weights
                 output += layer.bias
             elif isinstance(layer, HyperTangent):
-                output = np.exp(layer.sigma*output)
-                output = (output-1)/(output+1)
+                output = np.exp(layer.sigma * output)
+                output = (output - 1) / (output + 1)
 
         output = 1 / (1 + np.exp(-output))
         return output
 
+    def batch_yielder(self, train_data, labels):
+        num_batch = len(train_data) // self.batch_size
+        it = 0
+        for _ in range(self.epochs):
+            pos = 0
+            shuffle_idx = self.generator.permutation(len(train_data))
+            train_data = train_data[shuffle_idx]
+            labels = labels[shuffle_idx]
+            for batch in range(num_batch):
+                it += 1
+                yield train_data[pos: pos + self.batch_size], labels[
+                    pos: pos + self.batch_size
+                ], it
 
-if __name__ == '__main__':
+
+def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwargs):
+    m = np.zeros_like(x0)
+    s = np.zeros_like(x0)
+    i = 0
+    conv_count = 0
+    while True:
+        loss, gradient, status = fun(x0, *args)
+        if np.isclose(np.linalg.norm(gradient), 0, atol=1e-4):
+            conv_count += 1
+        else:
+            conv_count = 0
+        if conv_count > 10:
+            break
+
+        m *= beta1
+        m += (1 - beta1) * gradient
+        s *= beta2
+        s += (1 - beta2) * gradient ** 2
+        mhat = m / (1 - beta1 ** (i + 1))
+        vhat = s / (1 - beta2 ** (i + 1))
+        x0 -= lr * mhat / (np.sqrt(vhat) + eps)
+        i += 1
+
+        if status is True:
+            break
+
+    return OptimizeResult(
+        x=x0,
+        fun=loss,
+        jac=gradient,
+        nit=i if status is True else i - 1,
+        message="Training completed" if status is True else "Convergence reached",
+        success=True,
+    )
+
+
+if __name__ == "__main__":
     from implementation.data_import import csv_import
+
     generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64)
+    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
     model = Model(64, 16, 0)
     model.add(Linear(10))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
-    model.gradient_check(train_data[:64, :-1], train_data[:64, -1],
-                         current_params=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]))
+    a = minimize(
+        model.evaluate_loss,
+        x0=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]),
+        args=(train_data[:, :-1], train_data[:, -1], 20, 1234),
+        method=Adam_sciPy,
+    )
+    print(a)
