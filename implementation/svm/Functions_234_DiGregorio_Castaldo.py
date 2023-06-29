@@ -91,12 +91,12 @@ class GaussianSVM:
                 rel_gram[0, 1] * labels[s_pick] * sum_pair
                 - rel_gram[1, 1] * labels[r_pick] * sum_pair
                 - labels[r_pick]
-                * labels[s_pick](
+                * labels[s_pick]*(
                     np.dot(gram[s_pick], dual_vars)
                     - gram[s_pick, s_pick] * dual_vars[s_pick]
                 )
                 + np.dot(gram[r_pick], dual_vars)
-                - dual_vars[r_pick, r_pick] * dual_vars[r_pick]
+                - gram[r_pick, r_pick] * dual_vars[r_pick]
                 - gram[r_pick, s_pick] * (np.sum(dual_vars[[r_pick, s_pick]]))
                 - 1
                 + labels[r_pick] * labels[s_pick]
@@ -157,5 +157,5 @@ if __name__ == "__main__":
     mask = train_data[:, -1] == 0
     train_data[mask, -1] = -1
     svm = GaussianSVM(gamma=0.1, inv_reg=0.1)
-    dual_sol = svm.smo_fit(train_data[:, :-1], train_data[:, -1], 1e-5, 1e6)
+    dual_sol = svm.smo_fit(train_data[:, :-1], train_data[:, -1], 1e-5, 1e5)
     print(dual_sol)
