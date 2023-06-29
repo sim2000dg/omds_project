@@ -83,28 +83,23 @@ class GaussianSVM:
             )
             rel_gram = gram[np.ix_([r_pick, s_pick], [r_pick, s_pick])]
             quad_term = (
-                rel_gram[1, 1]
-                + rel_gram[0, 0]
+                (1 / 2) * rel_gram[0, 0]
                 - rel_gram[0, 1] * labels[r_pick] * labels[s_pick]
+                + (1 / 2) * rel_gram[1, 1]
             )
             lin_term = (
-                -2 * (rel_gram[0, 0] * labels[s_pick] * sum_pair)
-                + rel_gram[0, 1] * labels[r_pick] * sum_pair
-                + labels[r_pick] * labels[s_pick]
+                rel_gram[0, 1] * labels[s_pick] * sum_pair
+                - rel_gram[1, 1] * labels[r_pick] * sum_pair
+                - labels[r_pick]
+                * labels[s_pick](
+                    np.dot(gram[s_pick], dual_vars)
+                    - gram[s_pick, s_pick] * dual_vars[s_pick]
+                )
+                + np.dot(gram[r_pick], dual_vars)
+                - dual_vars[r_pick, r_pick] * dual_vars[r_pick]
+                - gram[r_pick, s_pick] * (np.sum(dual_vars[[r_pick, s_pick]]))
                 - 1
-                + (
-                    np.dot(gram[s_pick].T, dual_vars)
-                    - np.dot(
-                        gram[s_pick, [r_pick, s_pick]].T, dual_vars[[r_pick, s_pick]]
-                    )
-                )
-                + (
-                    np.dot(gram[r_pick].T, dual_vars)
-                    - np.dot(
-                        gram[r_pick, [r_pick, s_pick]].T, dual_vars[[r_pick, s_pick]]
-                    )
-                )
-                * (-labels[r_pick] * labels[s_pick])
+                + labels[r_pick] * labels[s_pick]
             )
 
             pred_r = dual_vars[r_pick]
@@ -115,11 +110,15 @@ class GaussianSVM:
                 prop = -lin_term / (2 * quad_term)
             if prop is None or ((prop < 0) | (prop > self.inv_reg)):
                 prop = (
-                    0 if 0 == min(0, (self.inv_reg ** 2) * quad_term + self.inv_reg * lin_term)
+                    0
+                    if 0
+                    == min(0, (self.inv_reg ** 2) * quad_term + self.inv_reg * lin_term)
                     else self.inv_reg
                 )
-            dual_vars[s_pick] = prop
-            dual_vars[r_pick] = labels[r_pick]*(-dual_vars[s_pick] * labels[s_pick] + sum_pair)
+            dual_vars[r_pick] = prop
+            dual_vars[s_pick] = labels[s_pick] * (
+                -dual_vars[r_pick] * labels[r_pick] + sum_pair
+            )
 
             for var in [s_pick, r_pick]:
                 if (dual_vars[var] > 0) & (dual_vars[var] < self.inv_reg):
