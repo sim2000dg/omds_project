@@ -204,6 +204,8 @@ class Model:
         self.epochs: Optional[int] = None
         self.yielder: Optional[Iterator] = None
         self.completed_train: bool = False
+        self.tot_params: int = 0
+        self.gradient_vector: Optional[np.ndarray] = None
 
     def add(self, layer: Linear | HyperTangent) -> Self:
         """
@@ -219,6 +221,9 @@ class Model:
                 rho=self.rho,
             )
         )
+        if isinstance(layer, Linear):  # Save total number of parameters for arrays pre-allocation
+            self.tot_params += math.prod(layer.weights.shape)
+            self.tot_params += layer.units
         # Set current output shape for the model
         self.current_out_shape = layer.out.shape[-1]
         return self
@@ -244,11 +249,11 @@ class Model:
 
         # Flatten everything in C-contigous ordering
         gradient_list = [np.reshape(x, -1) for x in reversed(gradient_list)]
-        gradient = np.concatenate(
-            gradient_list
+        np.concatenate(
+            gradient_list, out=self.gradient_vector
         )  # Concatenate the gradient vectors in one long gradient vector
 
-        return gradient
+        return self.gradient_vector
 
     def evaluate_loss(
         self,
@@ -280,6 +285,8 @@ class Model:
             self.generator = np.random.default_rng(seed)
         if self.epochs is None:
             self.epochs = epochs
+        if self.gradient_vector is None:
+            self.gradient_vector = np.zeros(self.tot_params, dtype=np.float64)
 
         # Setting the parameters in the net
         pos = 0  # Variable storing the slice position
@@ -299,11 +306,11 @@ class Model:
                     layer.weights.shape
                 )  # Get number of weights in weight matrix
                 layer.bias[:] = current_params[
-                    pos : pos + slice_dim_bias
+                    pos: pos + slice_dim_bias
                 ]  # Set params in pre-allocated bias array
                 pos += slice_dim_bias  # Update slice position w.r.t. input 1-D params array
                 layer.weights.flat[:] = current_params[
-                    pos : pos + slice_dim_weights
+                    pos: pos + slice_dim_weights
                 ]  # Set params in weights array
                 pos += slice_dim_weights  # Update slice position w.r.t. input 1-D params array
 
@@ -343,6 +350,40 @@ class Model:
         )  # Start the backpropagation pipeline
 
         return cross_entropy, gradient, self.completed_train
+
+    def evaluate(self, test_data: np.ndarray) -> np.ndarray:
+        """
+        Method returning a 1-D array of predictions.
+        :params test_data: The array (compatible with the initialized and trained model) containing the test data.
+        :returns: The 1-D array of predictions.
+        """
+        # This method is not really optimized for performance, but evaluation for prediction is far less problematic
+        # than the one for training, since just one pass is required.
+        output = test_data
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                output = output @ layer.weights
+                output += layer.bias
+            elif isinstance(layer, HyperTangent):
+                output = np.exp(layer.sigma * output)
+                output = (output - 1) / (output + 1)
+
+        output = 1 / (1 + np.exp(-output))
+        return output
+
+    def batch_yielder(self, train_data, labels):
+        num_batch = len(train_data) // self.batch_size
+        it = 0
+        for _ in range(self.epochs):
+            pos = 0
+            shuffle_idx = self.generator.permutation(len(train_data))
+            train_data = train_data[shuffle_idx]
+            labels = labels[shuffle_idx]
+            for batch in range(num_batch):
+                it += 1
+                yield train_data[pos: pos + self.batch_size], labels[
+                    pos: pos + self.batch_size
+                ], it
 
     def gradient_check(
         self,
@@ -395,40 +436,6 @@ class Model:
         denominator = np.linalg.norm(gradient) + np.linalg.norm(grad_approx)
 
         return numerator / denominator
-
-    def evaluate(self, test_data: np.ndarray) -> np.ndarray:
-        """
-        Method returning a 1-D array of predictions.
-        :params test_data: The array (compatible with the initialized and trained model) containing the test data.
-        :returns: The 1-D array of predictions.
-        """
-        # This method is not really optimized for performance, but evaluation for prediction is far less problematic
-        # than the one for training, since just one pass is required.
-        output = test_data
-        for layer in self.layers:
-            if isinstance(layer, Linear):
-                output = output @ layer.weights
-                output += layer.bias
-            elif isinstance(layer, HyperTangent):
-                output = np.exp(layer.sigma * output)
-                output = (output - 1) / (output + 1)
-
-        output = 1 / (1 + np.exp(-output))
-        return output
-
-    def batch_yielder(self, train_data, labels):
-        num_batch = len(train_data) // self.batch_size
-        it = 0
-        for _ in range(self.epochs):
-            pos = 0
-            shuffle_idx = self.generator.permutation(len(train_data))
-            train_data = train_data[shuffle_idx]
-            labels = labels[shuffle_idx]
-            for batch in range(num_batch):
-                it += 1
-                yield train_data[pos: pos + self.batch_size], labels[
-                    pos: pos + self.batch_size
-                ], it
 
 
 def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwargs):
