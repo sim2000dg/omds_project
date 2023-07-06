@@ -8,8 +8,8 @@ class GaussianSVMComplete(GaussianSVM):
         self, train_data: np.ndarray, labels: np.ndarray, tol: float, max_iter: int
     ):
         """
-        Fitting of the RBF SVM by solving the dual problem with an SMO algorithm with maximum violating pairs chosen
-        at each iteration.
+        Fitting of the RBF SVM by solving the dual problem with a SMO decomposition algorithm
+        with maximum violating pairs chosen at each iteration.
         Relevant dual variables/primal multipliers, labels and observations are saved in order to allow prediction.
         :param train_data: Array of train data, with shape (`n_obs`, `n_features`).
         :param labels: The array of response labels, encoded as \{-1, 1\}.
@@ -17,6 +17,9 @@ class GaussianSVMComplete(GaussianSVM):
         :param max_iter: The maximum number of iterations.
         :return: The dictionary with information on the optimization process.
         """
+        if not np.all(np.sort(np.unique(labels)) == [-1, 1]):
+            raise ValueError("The labels need to have a \{-1, 1\} encoding.")
+
         current_gradient = np.full(
             fill_value=-1, shape=len(train_data), dtype=np.float64
         )

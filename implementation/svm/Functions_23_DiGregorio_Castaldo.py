@@ -17,10 +17,12 @@ class GaussianSVM:
     def __init__(self, inv_reg, gamma):
         """
         Initialization of a Gaussian kernel SVM object. `inv_reg`  is the inverse regularization coefficient and `gamma`
-        is an hyperparameter of the gaussian kernel inducing the mapping of the features to the l_2 sequence space.
-        Higher values of gamma render the resulting embeddings orthogonal between one another,
-        low values of gamma drive the embeddings towards linear dependence (and thus non separability,
-        at least numerically).
+        is an hyperparameter of the gaussian kernel inducing the implicit mapping of the feature vectors to the unit
+        sphere of the l_2 sequence space.
+
+        Higher values of gamma drive the resulting embeddings towards orthogonality between one another (trivial and
+        meaningless linear separability), low values of gamma drive the embeddings towards linear dependence
+        (and thus non separability, at least numerically).
         :param inv_reg: The inverse regularization, a linear scaling of the hinge loss in the primal objective.
         :param gamma: Hyperparameter of the RBF/Gaussian kernel. An improper value can create numerical problems.
         """
@@ -109,7 +111,6 @@ class GaussianSVM:
         preds = np.sign(np.sum(inner_prods*self.support_labels[:, np.newaxis]*self.support_dual_vars[:, np.newaxis],
                                axis=0))
         return preds
-
 
     @abstractmethod
     def smo_fit(
