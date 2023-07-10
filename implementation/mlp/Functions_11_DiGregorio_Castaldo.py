@@ -447,8 +447,11 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
     m = np.zeros_like(x0)
     s = np.zeros_like(x0)
     i = 0
+    loss_init = None
     while True:
         loss, gradient, status = fun(x0, *args)
+        if loss_init is None:
+            loss_init = loss
         m *= beta1
         m += (1 - beta1) * gradient
         s *= beta2
@@ -464,6 +467,7 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
     return OptimizeResult(
         x=x0,
         fun=loss,
+        fun_init=loss_init,
         jac=gradient,
         nit=i if status is True else i - 1,
         message="Training completed" if status is True else "Convergence reached",
@@ -476,14 +480,14 @@ if __name__ == "__main__":
 
     generator = np.random.default_rng(1234)
     labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    model = Model(64, 16, 1e-4)
+    model = Model(32, 16, 1e-4)
     model.add(Linear(1000))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
     a = minimize(
         model.evaluate_loss,
-        x0=generator.normal(size=model.tot_params),
-        args=(train_data[:, :-1], train_data[:, -1], 2000, 1234),
+        x0=generator.normal(size=model.tot_params, scale=0.05),
+        args=(train_data[:, :-1], train_data[:, -1], 200, 1234),
         method=Adam_sciPy,
     )
     print(a)

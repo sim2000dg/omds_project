@@ -91,6 +91,8 @@ class GaussianSVM:
             axis=0,
         )  # Save intercept
 
+        # Compute KKT violation in the usual way, we need to add some tolerance here since the solver does not set
+        # precisely to the boundary the dual variables; an absolute tolerance of 10^-6 is chosen to tackle this.
         check_viol = -((gram @ dual_vars) - 1)/labels
         mask_zero = ~support_mask
         mask_reg = np.isclose(dual_vars, self.inv_reg, atol=1e-6, rtol=1e-10)
