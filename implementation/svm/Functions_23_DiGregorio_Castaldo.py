@@ -90,11 +90,23 @@ class GaussianSVM:
             ),
             axis=0,
         )  # Save intercept
+
+        check_viol = -((gram @ dual_vars) - 1)/labels
+        mask_zero = ~support_mask
+        mask_reg = np.isclose(dual_vars, self.inv_reg, atol=1e-6, rtol=1e-10)
+        mask_r = (mask_zero & (labels == 1)) | (mask_reg & (labels == - 1))
+        mask_s = (mask_zero & (labels == -1)) | (mask_reg & (labels == + 1))
+        r_set = mid_mask | mask_r
+        s_set = mid_mask | mask_s
+        violation = np.max(check_viol[r_set])-np.min(check_viol[s_set])
+
+
+
         opt_dict = {
             "InitObj": float(0),
             "FinalOpt": dual_sol["dual objective"],
             "Iterations": dual_sol["iterations"],
-            "KKTViolation:": 0,
+            "KKTViolation:": violation,
         }  # Return dictionary
         return opt_dict
 
@@ -126,7 +138,7 @@ if __name__ == '__main__':
     labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
     mask = train_data[:, -1] == 0
     train_data[mask, -1] = -1
-    svm = GaussianSVM(gamma=0.5, inv_reg=1)
+    svm = GaussianSVM(gamma=0.5, inv_reg=0.1)
     # dual_sol = svm.smo_fit(train_data[:, :-1], train_data[:, -1], 1e-5, 1e5)
     dual_sol_cvxopt = svm.cvxopt_fit(train_data[:, :-1], train_data[:, -1])
     svm.predict(train_data[:, :-1])

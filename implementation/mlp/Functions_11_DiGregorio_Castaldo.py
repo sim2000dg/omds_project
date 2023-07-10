@@ -2,7 +2,6 @@ import numpy as np
 from typing import Self
 
 # from ..data_import import csv_import
-import math
 from typing import Optional, Iterator
 from scipy.optimize import minimize, OptimizeResult
 import math
@@ -57,7 +56,7 @@ class Linear:
         return self.out  # Return output of forward pass
 
     def backprop(self, upstream_gradient):
-        """Returns the downstream gradient for this layer and computes the local gradient for the layer,
+        """Returns the downstream gradient for this layer and computes the gradient for the layer parameters,
         saving it in a pre-allocated array to be accessed with the complete backpropagation pipeline.
         :return: The downstream gradient
         """
@@ -72,9 +71,8 @@ class Linear:
         np.mean(upstream_gradient, axis=0, out=self.gradient_bias)
 
         # Return downstream gradient
-        return np.dot(
-            upstream_gradient, np.transpose(self.weights), out=self.downstream
-        )
+        np.dot(upstream_gradient, np.transpose(self.weights), out=self.downstream)
+        return self.downstream
 
     def model_setup(self, batch_size: int, in_shape: int, rho: float) -> Self:
         """
@@ -221,7 +219,9 @@ class Model:
                 rho=self.rho,
             )
         )
-        if isinstance(layer, Linear):  # Save total number of parameters for arrays pre-allocation
+        if isinstance(
+            layer, Linear
+        ):  # Save total number of parameters for arrays pre-allocation
             self.tot_params += math.prod(layer.weights.shape)
             self.tot_params += layer.units
         # Set current output shape for the model
@@ -240,14 +240,14 @@ class Model:
             )  # Get upstream gradient for following layer
             if isinstance(
                 layer, Linear
-            ):  # If layer is linear, layer.backprop also computes local gradient
-                local_gradient = layer.gradient  # Pointer to current local gradient
+            ):  # If layer is linear, layer.backprop also computes parameters gradient
+                local_gradient = layer.gradient  # Pointer to current parameters gradient
                 gradient_bias = layer.gradient_bias  # Pointers to current bias gradient
                 gradient_list.extend(
                     [local_gradient, gradient_bias]
                 )  # Extend gradient list with two pointers
 
-        # Flatten everything in C-contigous ordering
+        # Flatten everything in C-contiguous ordering
         gradient_list = [np.reshape(x, -1) for x in reversed(gradient_list)]
         np.concatenate(
             gradient_list, out=self.gradient_vector
@@ -306,11 +306,11 @@ class Model:
                     layer.weights.shape
                 )  # Get number of weights in weight matrix
                 layer.bias[:] = current_params[
-                    pos: pos + slice_dim_bias
+                    pos : pos + slice_dim_bias
                 ]  # Set params in pre-allocated bias array
                 pos += slice_dim_bias  # Update slice position w.r.t. input 1-D params array
                 layer.weights.flat[:] = current_params[
-                    pos: pos + slice_dim_weights
+                    pos : pos + slice_dim_weights
                 ]  # Set params in weights array
                 pos += slice_dim_weights  # Update slice position w.r.t. input 1-D params array
 
@@ -330,19 +330,24 @@ class Model:
             ):  # If layer is linear, we add to the penalty the norm of the weight matrix
                 reg += np.linalg.norm(layer.weights) ** 2
 
+        # Epsilon to prevent problems with the logarithm in the cross-entropy
+        epsilon = 1e-6
         out = np.squeeze(
             out
         )  # Squeeze the final output to avoid problems with broadcasting
         out = 1 / (1 + np.exp(-out))  # Apply sigmoid activation
         # Cross entropy loss + regularization
         cross_entropy = (
-            -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out))
+            -np.mean(
+                labels * np.log(out + epsilon)
+                + (1 - labels) * np.log(1 - (out - epsilon))
+            )
             + self.rho * reg
         )
 
-        downstream_grad = -labels / np.squeeze(out) + (1 - labels) / (
-            1 - np.squeeze(out)
-        )  # Cross-entropy gradient
+        downstream_grad = -labels / (out + epsilon) + (1 - labels) / (
+            1 - (out - epsilon)
+        )  # Cross-entropy gradient, taking into account epsilon
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1 - out)) * downstream_grad
         gradient = self.backprop(
@@ -381,8 +386,8 @@ class Model:
             labels = labels[shuffle_idx]
             for batch in range(num_batch):
                 it += 1
-                yield train_data[pos: pos + self.batch_size], labels[
-                    pos: pos + self.batch_size
+                yield train_data[pos : pos + self.batch_size], labels[
+                    pos : pos + self.batch_size
                 ], it
 
     def gradient_check(
@@ -442,16 +447,8 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
     m = np.zeros_like(x0)
     s = np.zeros_like(x0)
     i = 0
-    conv_count = 0
     while True:
         loss, gradient, status = fun(x0, *args)
-        if np.isclose(np.linalg.norm(gradient), 0, atol=1e-4):
-            conv_count += 1
-        else:
-            conv_count = 0
-        if conv_count > 10:
-            break
-
         m *= beta1
         m += (1 - beta1) * gradient
         s *= beta2
@@ -479,14 +476,14 @@ if __name__ == "__main__":
 
     generator = np.random.default_rng(1234)
     labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    model = Model(64, 16, 0)
-    model.add(Linear(10))
+    model = Model(64, 16, 1e-4)
+    model.add(Linear(1000))
     model.add(HyperTangent(0.5))
     model.add(Linear(1))
     a = minimize(
         model.evaluate_loss,
-        x0=np.concatenate([np.array([0.1, 0.1]), generator.normal(size=179)]),
-        args=(train_data[:, :-1], train_data[:, -1], 20, 1234),
+        x0=generator.normal(size=model.tot_params),
+        args=(train_data[:, :-1], train_data[:, -1], 2000, 1234),
         method=Adam_sciPy,
     )
     print(a)

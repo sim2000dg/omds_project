@@ -112,9 +112,7 @@ class GaussianSVMComplete(GaussianSVM):
                 ):
                     set_r[var] = True
                     set_s[var] = False
-                elif (dual_vars[var] == 0 and (labels[var] < 0)) or (
-                    (dual_vars[var] == self.inv_reg) and (labels[var] > 0)
-                ):
+                else:
                     set_r[var] = False
                     set_s[var] = True
 
@@ -143,7 +141,7 @@ class GaussianSVMComplete(GaussianSVM):
             axis=0,
         )
 
-        final_obj = (1 / 2) * (dual_vars @ gram @ dual_vars) - dual_vars
+        final_obj = (1 / 2) * (dual_vars @ gram @ dual_vars) - np.sum(dual_vars)
         opt_dict = {
             "InitObj": 0,
             "FinalOpt": final_obj,
@@ -162,8 +160,9 @@ if __name__ == "__main__":
     labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
     mask = train_data[:, -1] == 0
     train_data[mask, -1] = -1
-    svm = GaussianSVMComplete(gamma=0.5, inv_reg=1)
-    dual_sol = svm.smo_fit(train_data[:, :-1], train_data[:, -1], 1e-5, 1e5)
-    # dual_sol_cvxopt = svm.cvxopt_fit(train_data[:, :-1], train_data[:, -1])
-    print(np.sum(svm.predict(train_data[:, :-1]) == train_data[:, -1]))
+    svm = GaussianSVMComplete(gamma=0.5, inv_reg=0.1)
+    dual_sol = svm.smo_fit(train_data[:1000, :-1], train_data[:1000, -1], 1e-5, 1e5)
+    print(dual_sol)
+    dual_sol_cvxopt = svm.cvxopt_fit(train_data[:, :-1], train_data[:, -1])
+    print(np.sum(svm.predict(train_data[1000:, :-1]) == train_data[1000:, -1]))
 
