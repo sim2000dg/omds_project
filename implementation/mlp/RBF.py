@@ -7,22 +7,25 @@ from sklearn.metrics import pairwise_distances
 class RBF:
 
     def __init__(self, train_data: np.ndarray, units: int = 20, rho1: int = 0,
-                 rho2: int = 0, sigma: float = 1):
+                 rho2: int = 0, sigma: float = 1, seed: int = 1234):
         """
         :param train_data: The training data, as a NumPy array.
         :param units: The number of centers initialized in the hidden layer, as 2-D NumPy array
         :param rho1: The L2 regularization hyperparameter for weights vector. Higher rho, linearly higher L2 penalty.
         :param rho2: The L2 regularization hyperparameter for centers matrix. Higher rho, linearly higher L2 penalty.
         :param sigma: The parameter in the RBF activation function, Multiquadric RBF function is considered
+        :param seed: The seed value for reproducibility
         """
         self.x = train_data
         self.rho1 = rho1
         self.rho2 = rho2
         self.sigma = sigma
         self.units = units
-        self.weights = np.random.normal(0, 0.005, size=(units, 1))
+
+        self.generator = np.random.default_rng(seed)
+        self.weights = generator.normal(0, 0.005, size=(units, 1))
         # the centers are randomly picked among the training points
-        self.centroids = self.x[np.random.choice(self.x.shape[0], units, replace=False)]
+        self.centroids = self.x[generator.choice(self.x.shape[0], units, replace=False)]
 
         # array to store upstream gradient in the backpropagation pipeline
         self.gradient = np.zeros(shape=(train_data.shape[0], units), dtype=np.float64)
