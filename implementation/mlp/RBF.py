@@ -1,17 +1,6 @@
-import numpy
 import numpy as np
-from typing import Self, Callable, Tuple
-
 # from ..data_import import csv_import
-import math
-from typing import Optional, Iterator
 
-from numpy import ndarray
-from scipy.optimize import minimize, OptimizeResult
-import math
-from itertools import product, chain
-from time import perf_counter
-import pandas as pd
 from sklearn.metrics import pairwise_distances
 
 
@@ -42,68 +31,97 @@ class RBF:
         # array to avoid useless memory allocation
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
-    def evaluate_loss(self, labels: np.ndarray, epsilon: float = 0,
+    def evaluate_loss(self, labels: np.ndarray, epsilon: float = 1e-8,
                       centroids: np.ndarray = None) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
         Method evaluating the L2-penalized loss for the training data.
         :param labels: The response data, as a 1-D NumPy array.
         :param centroids: The centers took into account in the computation of the phi matrix. It is useful to avoid
-        overwriting in the backtracking lineasearch pipeline.
+        overwriting in the backtracking Line-search pipeline.
         :param epsilon: A small value to prevent overflow issues with the exponential in the sigmoid.
-        :return: A tuple with the value of the loss, the gradient vector, the phi matrix and the output of the forward
-        pass.
+        :return: A tuple with the value of the loss, the gradient vector w.r.t the centers, the gradient vector
+        w.r.t. the weights, the Hessian matrix w.r.t the weights.
         """
+        # useful condition to perform gradient check and LineSearch in the fit method
         if centroids is not None:
             phi_mat = self.interpolation_mat(train_data=self.x, centroids=centroids)
-            reg = np.linalg.norm(centroids) ** 2
+            reg_centroids = np.linalg.norm(centroids) ** 2  # L2 regularization w.r.t. the centers
 
         else:
             phi_mat = self.interpolation_mat(train_data=self.x, centroids=self.centroids)
-            reg = np.linalg.norm(self.centroids) ** 2
+            reg_centroids = np.linalg.norm(self.centroids) ** 2
 
         out = np.dot(phi_mat, self.weights)
-        out = np.squeeze(out)
-        out = 1 / (1 + np.exp(-out))
+        out = np.squeeze(out)  # Squeeze the final output to avoid problems with broadcasting
+        out = 1 / (1 + np.exp(-out))  # output for the forward pass
 
+        # Cross entropy loss + regularization, taking into account epsilon to avoid overflow and
+        # invalid arguments in Numpy.log
         cross_entropy = -np.mean(labels * np.log(out + epsilon) + (1 - labels) * np.log(1 - (out - epsilon)))
         cross_entropy += self.rho1 * np.linalg.norm(self.weights) ** 2
-        cross_entropy += self.rho2 * reg
+        cross_entropy += self.rho2 * reg_centroids
 
-        downstream_grad = -labels / (out + epsilon) + (1 - labels) / (1 - (out - epsilon))  # Cross-entropy gradient
+        # Cross-entropy gradient, taking into account epsilon
+        downstream_grad = -labels / (out + epsilon) + (1 - labels) / (1 - (out - epsilon))
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1 - out)) * downstream_grad
-        gradient = self.backprop(downstream_grad[:, np.newaxis],
-                                 phi_mat)  # Start the backpropagation pipeline w.r.t centers
 
-        return cross_entropy, gradient, phi_mat, out
+        # Start the backpropagation pipeline w.r.t centers
+        gradient_centroids = self.backprop(downstream_grad[:, np.newaxis],
+                                           phi_mat)
+
+        # Analytic gradient w.r.t the weights vector
+        gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels))
+        np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
+
+        # Analytic hessian w.r.t the weights vector
+        hessian_weights = phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat
+        hessian_weights[np.diag_indices(self.units)] += 2 * self.rho1
+
+        return cross_entropy, gradient_centroids, gradient_weights, hessian_weights
 
     def backprop(self, upstream_gradient: np.ndarray, phi_mat: np.ndarray) -> np.ndarray:
-        """
 
-        :param upstream_gradient:
-        :return:
         """
-        # backpropagation  w.r.t the hidden  layer
+        Returns the downstream gradient for the hidden layer w.r.t the centers matrix
+        :param upstream_gradient: The upstream gradient as a 2-D NumPy array
+        :param phi_mat: The design matrix tranformed as a 2-D Numpy array
+        :return: The downstream gradient w.r.t the centers as a 2-D Numpy array
+        """
+        # save gradient w.r.t the phi matrix
         np.dot(upstream_gradient, self.weights.T, out=self.gradient)
+        # save the element-wise multiplication between the derivative of the RBF function and the upstream gradient
         np.multiply(-1 / phi_mat, self.gradient, out=self.gradient)
+
+        # the derivative of the norm is a 3D tensor with the suitable dimensions
         np.subtract(self.x[:, np.newaxis, :], self.centroids[np.newaxis, :, :], out=self.store)
+        # save the element-wise multiplication between the upstream gradient expanded and the derivative of the norm
         np.multiply(self.gradient[:, :, np.newaxis], self.store, out=self.store)
+
+        # Save the average gradient
         np.mean(self.store, axis=0, out=self.downstream)
+
+        # Simply adding the gradient of the L2 regularization to the downstream gradient
         np.add(2 * self.rho2 * self.centroids, self.downstream, out=self.downstream)
 
         return self.downstream
 
     def interpolation_mat(self, train_data: np.ndarray, centroids: np.ndarray) -> np.ndarray:
         """
-
-        :param train_data:
-        :param centroids:
-        :return:
+        Returning the RBF activation whose argument is the norm of the differences between X and the centers
+        :param train_data: The training data, as a NumPy array.
+        :param centroids: The centers, as a Numpy array
+        :return: The phi matrix, as a Numpy array
         """
         return np.sqrt(pairwise_distances(train_data, centroids) ** 2 + self.sigma ** 2)
 
-    def gradient_check(self, labels: np.ndarray, epsilon: int = 1e-6):
+    def gradient_check(self, labels: np.ndarray, epsilon: int = 1e-6) -> str:
+        """
+        :param labels: The response data, as a 1-D NumPy array.
+        :param epsilon: Small constant for the perturbation of the parameters
+        :return A string with the result of the gradient check
+        """
 
         output_plus = np.zeros(shape=self.centroids.size, dtype=np.float64)
         centers_flatten = self.centroids.reshape(-1)
@@ -112,10 +130,8 @@ class RBF:
             # adding epsilon to only one component of the entire vector of the parameters
             current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(self.x, labels,
-                                                   centroids=current_params_plus.reshape(self.centroids.shape),
+            output_plus[elem] = self.evaluate_loss(labels, centroids=current_params_plus.reshape(self.centroids.shape),
                                                    epsilon=1e-7)[0]
-
 
         output_minus = np.zeros(shape=self.centroids.size, dtype=np.float64)
         for elem in range(len(centers_flatten)):
@@ -123,59 +139,102 @@ class RBF:
             # subtracting epsilon to only one component of the entire vector of the parameters
             current_params_minus[elem] -= epsilon
             # start evaluate loss pipeline
-            output_minus[elem] = self.evaluate_loss(self.x, labels,
+            output_minus[elem] = self.evaluate_loss(labels,
                                                     centroids=current_params_minus.reshape(self.centroids.shape),
                                                     epsilon=1e-7)[0]
 
         grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
         # start the pipeline to retrieve the backprop gradient
-        gradient = self.evaluate_loss(self.x, labels, epsilon=1e-7,
+        gradient = self.evaluate_loss(labels, epsilon=1e-7,
                                       centroids=centers_flatten.reshape(self.centroids.shape))[1].reshape(-1)
 
         # compute the Euclidean distance normalized
         numerator = np.linalg.norm(gradient - grad_approx)
         denominator = np.linalg.norm(gradient) + np.linalg.norm(grad_approx)
 
-        return numerator / denominator
+        if numerator / denominator <= epsilon:
+            print('The analytic gradient is correct !! The norm of the difference between the gradient approximation ' \
+                  f'and the actual gradient is {numerator:09}')
+        else:
+            print(
+                'The analytic gradient is  not correct !! The norm of the difference between the gradient approximation ' \
+                f'and the actual gradient is {numerator :09}')
 
-    def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, epsilon: float = 1e-8):
+    def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, early_stopping: int = 20) -> tuple:
+        """
+        "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using the
+        Iteratively Reweighted Least Squares method with the Newton-Raphson algorithm, where a single update is
+        determined by evaluating the first and second derivatives or the Hessian matrix.
+        After updating the weights, the centers are updated through a backtracking line search to determine
+        the distance to move along the steepest descent direction.
+        The existence of the global optimum for the weights is guaranteed by the convexity of the Hessian matrix,
+        while the global minimum for the centers is not guaranteed.
+        However, every sequence {(w_k),(c_k)} admits an accumulation point, {E(w_k),(c_k)} converges and every
+        accumulation point of {(w_k , c_k )} is a stationary point."
 
+        :param labels: The response data, as a 1-D NumPy array.
+        :param tol: A small constant for the stopping criterion
+        :param epoch: The max number of iteration performed
+        :param early_stopping: The maximum number of iterations allowed without any improvement.
+        :return The number of iteration, the value of the loss and the reason for stopping.
+        """
         k = 0
-        conv_count = 0
+        conv_count = 0  # Counter for the stopping criterion condition
+        es_counter = 0  # Counter for the early stopping criterion condition
+        loss_last = 0  # save the loss value at the previous iteration
         while True:
-            loss, gradient, phi_mat, out = self.evaluate_loss(self.x, labels, epsilon=epsilon)
+            loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(labels)
+            loss_last = loss
 
-            gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels))
-            np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
-            hessian_weights = phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat
-            hessian_weights[np.diag_indices(self.units)] += 2 * self.rho1
+            # Update of the weights vector
+            np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis], out=self.weights)
 
-            np.add(self.weights, np.linalg.solve(hessian_weights, -gradient_weights)[:, np.newaxis], out=self.weights)
+            # line search to find the optimal step size
+            alpha = self.armijo_linesearch(labels, gradient_centroids, self.centroids)
 
-            alpha = self.armijo_linesearch(self.x, labels, gradient, self.centroids, epsilon=epsilon)
-            self.centroids = self.centroids - alpha * gradient
+            # Update centers along the steepest descent direction
+            self.centroids = self.centroids - alpha * gradient_centroids
 
             k += 1
 
-            if np.isclose(np.linalg.norm(gradient), 0, atol=tol)\
-                    and np.isclose(np.linalg.norm(gradient_weights), 0, atol=tol):
-                conv_count += 1
-            else:
-                conv_count = 0
-            if conv_count > 5 or k == epoch:
+            # Condition for early stopping criterion
+            es_counter = es_counter + 1 if (
+                    np.greater_equal(loss, loss_last) | np.isclose(loss, loss_last, atol=1e-4)) else 0
+
+            # Condition for the stopping criterion of the algorithm
+            conv_count = conv_count + 1 if (
+                    np.isclose(np.linalg.norm(gradient_centroids), 0, atol=tol)
+                    and np.isclose(np.linalg.norm(gradient_weights), 0, atol=tol)) \
+                else 0
+
+            if conv_count > 5 or k == epoch or es_counter == early_stopping:
                 break
 
-        return k
+        return (k, loss, print('Early Stopping ...') if es_counter == early_stopping else None,
+                print(f'Training completed in {k} iterations') if conv_count != 5
+                else print(f'convergence reached in {k} iterations'))
 
-    def armijo_linesearch(self, train_data: np.ndarray, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
-                          epsilon: float, alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3, max_iters: int = 100):
+    def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
+                          alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,
+                          max_iters: int = 100) -> float:
+        """
+        Performing Armijo line search to determine the amount to move along a given search direction
+        :param labels: The response data, as a 1-D NumPy array.
+        :param gradient: direction for the search
+        :param x_0: The staring point
+        :param alpha: The maximum candidate step size
+        :param beta: The search control parameter
+        :param c1: The parameter to compute the loss at the next step
+        :param max_iters: The maximum number of iterations allowed
+        :return The learning rate alpha
+        """
 
         direction = - gradient
-        loss = self.evaluate_loss(train_data, labels, epsilon=epsilon)[0]
+        loss = self.evaluate_loss(labels)[0]
 
         for _ in range(max_iters):
             x_next = x_0 + alpha * direction
-            loss_next = self.evaluate_loss(train_data, labels, centroids=x_next, epsilon=epsilon)[0]
+            loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
 
             if loss <= loss_next + alpha * c1 * np.dot(gradient.reshape(-1), direction.reshape(-1)):
                 break
@@ -184,15 +243,14 @@ class RBF:
 
         return alpha
 
-    def evaluate(self, train_data: np.ndarray):
+    def evaluate(self, test_data: np.ndarray) -> np.ndarray:
+        """
+        Method returning a 1-D array of predictions.
+        :params test_data: The array (compatible with the initialized and trained model) containing the test data.
+        :returns: The 1-D array of predictions.
         """
 
-        :param train_data:
-        :param labels:
-        :return:
-        """
-
-        phi_mat = self.interpolation_mat(train_data, self.centroids)
+        phi_mat = self.interpolation_mat(test_data, self.centroids)
 
         out = np.dot(phi_mat, self.weights)
         out = np.squeeze(out)
@@ -200,7 +258,7 @@ class RBF:
 
         return out
 
-"""
+
 if __name__ == '__main__':
     from implementation.data_import import csv_import
     from sklearn.model_selection import train_test_split
@@ -212,25 +270,10 @@ if __name__ == '__main__':
 
     x_train, x_test, y_train, y_test = train_test_split(train_data[:, :-1], train_data[:, -1], test_size=0.3)
 
-    model = RBF(train_data=x_train, units=100, sigma=1, rho2=1e-7)
+    model = RBF(train_data=x_train, units=20, sigma=0.5, rho1=1e-3, rho2=1e-4)
 
     model.fit(y_train, epoch=500)
 
     out = model.evaluate(x_test)
 
     accuracy_score(np.where(out >= 0.5, 1, 0), y_test)
-"""
-
-if __name__ == '__main__':
-    from implementation.data_import import csv_import
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score
-    import numpy as np
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64, remove_dup=True)
-
-    x_train, x_test, y_train, y_test = train_test_split(train_data[:, :-1], train_data[:, -1], test_size=0.3)
-
-    model = RBF(train_data=x_train, units=20, sigma=1, rho1=1e-3, rho2=1e-3)
-    model.gradient_check(y_train)
