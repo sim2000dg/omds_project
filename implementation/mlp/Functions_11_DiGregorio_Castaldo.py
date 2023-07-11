@@ -186,7 +186,7 @@ class Model:
     A class representing the whole MLP model
     """
 
-    def __init__(self, batch_size: int, input_shape: int, rho: float):
+    def __init__(self, batch_size: int, input_shape: int, rho: float = 0):
         """
         Initialization method for MLP Model class.
         :param batch_size: The batch size for the MLP model. It needs to be fixed for efficiency reasons (no spare obs.)
@@ -395,7 +395,7 @@ class Model:
         train_data: np.array,
         labels: np.array,
         current_params: np.array,
-        epsilon: float = 1e-3,
+        epsilon: float = 1e-6,
     ) -> str:
         """
         Method returning the Euclidean distance between the numeric gradient and the output from the backprop pipeline,
@@ -408,7 +408,7 @@ class Model:
         :return The Euclidean distance between the numeric gradient and the backprop gradient.
         """
 
-        output_plus = np.zeros(current_params.shape[0], dtype=np.float32)
+        output_plus = np.zeros(current_params.shape[0], dtype=np.float64)
         for elem in range(len(current_params)):
             current_params_plus = current_params.copy()
             # adding epsilon to only one component of the entire vector of the parameters
@@ -416,30 +416,32 @@ class Model:
                 elem
             ] += epsilon  # adding epsilon to only one component of the entire vector of the
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(
-                train_data, labels, current_params_plus
+            output_plus[elem] = self.evaluate_loss(current_params_plus,
+                train_data, labels, seed=1234, epochs=1
             )[0]
+            self.yielder = None
 
-        output_minus = np.zeros(current_params.shape[0], dtype=np.float32)
+        output_minus = np.zeros(current_params.shape[0], dtype=np.float64)
         for elem in range(len(current_params)):
             current_params_minus = current_params.copy()
             # subtracting epsilon to only one component of the entire vector of the parameters
             current_params_minus[elem] -= epsilon
             # start evaluate loss pipeline
-            output_minus[elem] = self.evaluate_loss(
-                train_data, labels, current_params_minus
+            output_minus[elem] = self.evaluate_loss(current_params_minus,
+                train_data, labels, epochs=1, seed=1234
             )[0]
+            self.yielder = None
 
         grad_approx = (output_plus - output_minus) / (
             2 * epsilon
         )  # computing approximation for the gradient
         # start the pipeline to retrieve the backprop gradient
-        gradient = self.evaluate_loss(train_data, labels, current_params)[1]
+        gradient = self.evaluate_loss(current_params, train_data, labels, seed=1234, epochs=1)[1]
+        self.yielder = None
 
         # compute the Euclidean distance normalized
         numerator = np.linalg.norm(gradient - grad_approx)
         denominator = np.linalg.norm(gradient) + np.linalg.norm(grad_approx)
-
         return numerator / denominator
 
 
@@ -474,7 +476,7 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
         success=True,
     )
 
-
+"""
 if __name__ == "__main__":
     from implementation.data_import import csv_import
 
@@ -491,3 +493,18 @@ if __name__ == "__main__":
         method=Adam_sciPy,
     )
     print(a)
+    
+"""
+
+if __name__ == "__main__":
+    from implementation.data_import import csv_import
+
+    generator = np.random.default_rng(1234)
+    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
+    model = Model(train_data.shape[0], 16)
+    model.add(Linear(20))
+    model.add(HyperTangent(0.5))
+    model.add(Linear(10))
+    model.add(HyperTangent(0.5))
+    model.add(Linear(1))
+    model.gradient_check(train_data[:, :-1], train_data[:, -1], generator.normal(size=model.tot_params))
