@@ -48,11 +48,12 @@ class RBF:
         """
         # useful condition to perform gradient check and LineSearch in the fit method
         if centroids is not None:
-            phi_mat = self.interpolation_mat(train_data=self.x, centroids=centroids)
+            # Computation of the phi matrix using the Multiquadric radial basis function
+            phi_mat = np.sqrt(pairwise_distances(self.x, centroids) ** 2 + self.sigma ** 2)
             reg_centroids = np.linalg.norm(centroids) ** 2  # L2 regularization w.r.t. the centers
 
         else:
-            phi_mat = self.interpolation_mat(train_data=self.x, centroids=self.centroids)
+            phi_mat = np.sqrt(pairwise_distances(self.x, self.centroids) ** 2 + self.sigma ** 2)
             reg_centroids = np.linalg.norm(self.centroids) ** 2
 
         out = np.dot(phi_mat, self.weights)
@@ -87,7 +88,7 @@ class RBF:
     def backprop(self, upstream_gradient: np.ndarray, phi_mat: np.ndarray) -> np.ndarray:
 
         """
-        Returns the downstream gradient for the hidden layer w.r.t the centers matrix
+        Returns the gradient for the hidden layer w.r.t the centers matrix
         :param upstream_gradient: The upstream gradient as a 2-D NumPy array
         :param phi_mat: The design matrix tranformed as a 2-D Numpy array
         :return: The downstream gradient w.r.t the centers as a 2-D Numpy array
@@ -106,18 +107,9 @@ class RBF:
         np.mean(self.store, axis=0, out=self.downstream)
 
         # Simply adding the gradient of the L2 regularization to the downstream gradient
-        np.add(2 * self.rho2 * self.centroids, self.downstream, out=self.downstream)
+        gradient = np.add(2 * self.rho2 * self.centroids, self.downstream, out=self.downstream)
 
-        return self.downstream
-
-    def interpolation_mat(self, train_data: np.ndarray, centroids: np.ndarray) -> np.ndarray:
-        """
-        Returning the RBF activation whose argument is the norm of the differences between X and the centers
-        :param train_data: The training data, as a NumPy array.
-        :param centroids: The centers, as a Numpy array
-        :return: The phi matrix, as a Numpy array
-        """
-        return np.sqrt(pairwise_distances(train_data, centroids) ** 2 + self.sigma ** 2)
+        return gradient
 
     def gradient_check(self, labels: np.ndarray, epsilon: int = 1e-6) -> str:
         """
@@ -165,13 +157,13 @@ class RBF:
 
     def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, early_stopping: int = 20) -> tuple:
         """
-        "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using the
-        Iteratively Reweighted Least Squares method with the Newton-Raphson algorithm, where a single update is
-        determined by evaluating the first and second derivatives or the Hessian matrix.
-        After updating the weights, the centers are updated through a backtracking line search to determine
+        "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using
+        the Newton-Raphson algorithm, where a single update is determined by evaluating the gradient and
+        the Hessian matrix.
+        After updating the weights, the centers are updated through a backtracking line search (Armijo) to determine
         the distance to move along the steepest descent direction.
-        The existence of the global optimum for the weights is guaranteed by the convexity of the Hessian matrix,
-        while the global minimum for the centers is not guaranteed.
+        If the global optimum for the weights exists, by the convexity of the objective function, this algorithm
+        converges to the global optimum, while the global minimum for the centers is not guaranteed.
         However, every sequence {(w_k),(c_k)} admits an accumulation point, {E(w_k),(c_k)} converges and every
         accumulation point of {(w_k , c_k )} is a stationary point."
 
