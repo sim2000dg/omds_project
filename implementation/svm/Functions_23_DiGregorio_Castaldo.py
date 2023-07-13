@@ -108,7 +108,7 @@ class GaussianSVM:
             "FinalOpt": dual_sol["dual objective"],
             "Iterations": dual_sol["iterations"],
             "Time": round(elapsed, 5),
-            "KKTViolation:": violation,
+            "KKTViolation": violation,
         }  # Return dictionary
         return opt_dict
 

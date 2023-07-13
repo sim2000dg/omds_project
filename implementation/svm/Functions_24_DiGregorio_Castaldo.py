@@ -159,7 +159,7 @@ class GaussianSVMComplete(GaussianSVM):
             "FinalOpt": final_obj,
             "Iterations": it,
             "Time": elapsed,
-            "KKTViolation:": 0
+            "KKTViolation": 0
             if (np.sum(set_r) * np.sum(set_s) == 0)
             else current_check[r_pick] - current_check[s_pick],
         }
