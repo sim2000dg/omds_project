@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 
 from sklearn.metrics import pairwise_distances
@@ -172,25 +174,30 @@ class RBF:
         :param early_stopping: The maximum number of iterations allowed without any improvement.
         :return The number of iteration, the value of the loss and the reason for stopping.
         """
-        k = 0
+        k = 0  # Iterations of the algorithm
+        n_eval = 0  # Number of evaluation of the loss function
         conv_count = 0  # Counter for the stopping criterion condition
         es_counter = 0  # Counter for the early stopping criterion condition
         loss_last = 0  # save the loss value at the previous iteration
         while True:
             loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(labels)
+            n_eval += 1
             loss_last = loss
 
             # Update of the weights vector
             try :
-                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis], out=self.weights)
-                k +=1
+                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis]
+                       , out=self.weights)
+                k += 1
             except np.linalg.LinAlgError:
                 raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
                                  'linearly dependent)')
 
+            loss, gradient_centroids = self.evaluate_loss(labels)[0:2]
+            n_eval += 1
             # line search to find the optimal step size
-            alpha = self.armijo_linesearch(labels, gradient_centroids, self.centroids)
-
+            alpha, k_armijo = self.armijo_linesearch(labels, gradient_centroids, self.centroids, loss)
+            n_eval += k_armijo
             # Update centers along the steepest descent direction
             self.centroids = self.centroids - alpha * gradient_centroids
             k += 1
@@ -208,18 +215,19 @@ class RBF:
             if conv_count > 5 or k == epoch or es_counter == early_stopping:
                 break
 
-        return (k, loss, print('Early Stopping ...') if es_counter == early_stopping else None,
+        return (k, n_eval, loss, print('Early Stopping ...') if es_counter == early_stopping else None,
                 print(f'Training completed in {k} iterations') if conv_count != 5
                 else print(f'convergence reached in {k} iterations'))
 
-    def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
+    def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray, loss: float,
                           alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,
-                          max_iters: int = 20) -> float:
+                          max_iters: int = 20) -> tuple[float, int]:
         """
         Performing Armijo line search to determine the amount to move along a given search direction
         :param labels: The response data, as a 1-D NumPy array.
         :param gradient: direction for the search
         :param x_0: The staring point
+        :param loss: The loss value after the update of the weights vector
         :param alpha: The maximum candidate step size
         :param beta: The search control parameter
         :param c1: The parameter to compute the loss at the next step
@@ -228,9 +236,7 @@ class RBF:
         """
 
         direction = - gradient
-        loss = self.evaluate_loss(labels)[0]
-        k = 1
-
+        k = 0 # number of evaluations of the loss function
         for _ in range(max_iters):
             x_next = x_0 + alpha * direction
             loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
@@ -257,3 +263,7 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return out
+
+
+
+if __name__ == '__main__':
