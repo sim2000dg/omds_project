@@ -1,6 +1,7 @@
 from .Functions_23_DiGregorio_Castaldo import GaussianSVM
 from sklearn.metrics.pairwise import rbf_kernel
 import numpy as np
+import time
 
 
 class GaussianSVMComplete(GaussianSVM):
@@ -17,6 +18,7 @@ class GaussianSVMComplete(GaussianSVM):
         :param max_iter: The maximum number of iterations.
         :return: The dictionary with information on the optimization process.
         """
+        start = time.time()  # Timer start
         if not np.all(np.sort(np.unique(labels)) == [-1, 1]):
             raise ValueError("The labels need to have a \{-1, 1\} encoding.")
 
@@ -133,6 +135,7 @@ class GaussianSVMComplete(GaussianSVM):
             if it == max_iter:  # Check maximum number of iterations
                 break
 
+        elapsed = time.time()-start
         # Mask for support
         support_mask = ~np.isclose(dual_vars, 0, rtol=1e-10, atol=1e-6) # Mask for support vectors
         mid_mask = support_mask & (
@@ -155,6 +158,7 @@ class GaussianSVMComplete(GaussianSVM):
             "InitObj": 0,
             "FinalOpt": final_obj,
             "Iterations": it,
+            "Time": elapsed,
             "KKTViolation:": 0
             if (np.sum(set_r) * np.sum(set_s) == 0)
             else current_check[r_pick] - current_check[s_pick],

@@ -4,6 +4,7 @@ from sklearn.metrics.pairwise import rbf_kernel
 from cvxopt.solvers import qp
 from cvxopt import matrix, spmatrix, solvers
 from typing import Optional, Dict
+import time
 
 
 class GaussianSVM:
@@ -68,8 +69,9 @@ class GaussianSVM:
         init_vars = {"x": matrix(np.zeros(len(labels)), tc="d")}  # Dict for setting the initial values for the solver
 
         solvers.options['show_progress'] = False
+        start = time.time()  # Timer start
         dual_sol = qp(gram, q, G, h, A, b, initvals=init_vars)
-
+        elapsed = time.time()-start  # Timer end
 
         dual_vars = np.squeeze(np.array(dual_sol["x"]))  # Get solution of the dual
         support_mask = ~np.isclose(dual_vars, 0, rtol=1e-10, atol=1e-6)  # Mask for support vectors
@@ -105,6 +107,7 @@ class GaussianSVM:
             "InitObj": float(0),
             "FinalOpt": dual_sol["dual objective"],
             "Iterations": dual_sol["iterations"],
+            "Time": round(elapsed, 5),
             "KKTViolation:": violation,
         }  # Return dictionary
         return opt_dict
