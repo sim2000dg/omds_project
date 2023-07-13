@@ -22,9 +22,9 @@ class RBF:
         self.units = units
 
         self.generator = np.random.default_rng(seed)
-        self.weights = generator.normal(0, 0.005, size=(units, 1))
+        self.weights = self.generator.normal(0, 0.005, size=(units, 1))
         # the centers are randomly picked among the training points
-        self.centroids = self.x[generator.choice(self.x.shape[0], units, replace=False)]
+        self.centroids = self.x[self.generator.choice(self.x.shape[0], units, replace=False)]
 
         # array to store upstream gradient in the backpropagation pipeline
         self.gradient = np.zeros(shape=(train_data.shape[0], units), dtype=np.float64)
@@ -183,6 +183,7 @@ class RBF:
             # Update of the weights vector
             try :
                 np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis], out=self.weights)
+                k +=1
             except np.linalg.LinAlgError:
                 raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
                                  'linearly dependent)')
@@ -192,7 +193,6 @@ class RBF:
 
             # Update centers along the steepest descent direction
             self.centroids = self.centroids - alpha * gradient_centroids
-
             k += 1
 
             # Condition for early stopping criterion
@@ -229,17 +229,19 @@ class RBF:
 
         direction = - gradient
         loss = self.evaluate_loss(labels)[0]
+        k = 1
 
         for _ in range(max_iters):
             x_next = x_0 + alpha * direction
             loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
+            k += 1
 
             if loss <= loss_next + alpha * c1 * np.dot(gradient.reshape(-1), direction.reshape(-1)):
                 break
             else:
                 alpha *= beta
 
-        return alpha
+        return alpha, k
 
     def evaluate(self, test_data: np.ndarray) -> np.ndarray:
         """
