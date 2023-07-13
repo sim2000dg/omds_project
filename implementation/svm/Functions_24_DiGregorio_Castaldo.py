@@ -1,4 +1,4 @@
-from Functions_23_DiGregorio_Castaldo import GaussianSVM
+from .Functions_23_DiGregorio_Castaldo import GaussianSVM
 from sklearn.metrics.pairwise import rbf_kernel
 import numpy as np
 
@@ -160,18 +160,3 @@ class GaussianSVMComplete(GaussianSVM):
             else current_check[r_pick] - current_check[s_pick],
         }
         return opt_dict
-
-
-if __name__ == "__main__":
-    from implementation.data_import import csv_import
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    mask = train_data[:, -1] == 0
-    train_data[mask, -1] = -1
-    svm = GaussianSVMComplete(gamma=0.5, inv_reg=0.1)
-    dual_sol = svm.smo_fit(train_data[:1000, :-1], train_data[:1000, -1], 1e-5, 1e5)
-    print(dual_sol)
-    dual_sol_cvxopt = svm.cvxopt_fit(train_data[:, :-1], train_data[:, -1])
-    print(np.sum(svm.predict(train_data[1000:, :-1]) == train_data[1000:, -1]))
-

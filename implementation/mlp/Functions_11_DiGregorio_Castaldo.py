@@ -1,9 +1,6 @@
 import numpy as np
-from typing import Self
-
-# from ..data_import import csv_import
-from typing import Optional, Iterator
-from scipy.optimize import minimize, OptimizeResult
+from typing import Self, Optional, Iterator
+from scipy.optimize import OptimizeResult
 import math
 
 
@@ -475,36 +472,3 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
         message="Training completed" if status is True else "Convergence reached",
         success=True,
     )
-
-"""
-if __name__ == "__main__":
-    from implementation.data_import import csv_import
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    model = Model(32, 16, 1e-4)
-    model.add(Linear(1000))
-    model.add(HyperTangent(0.5))
-    model.add(Linear(1))
-    a = minimize(
-        model.evaluate_loss,
-        x0=generator.normal(size=model.tot_params, scale=0.05),
-        args=(train_data[:, :-1], train_data[:, -1], 200, 1234),
-        method=Adam_sciPy,
-    )
-    print(a)
-    
-"""
-
-if __name__ == "__main__":
-    from implementation.data_import import csv_import
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    model = Model(train_data.shape[0], 16)
-    model.add(Linear(20))
-    model.add(HyperTangent(0.5))
-    model.add(Linear(10))
-    model.add(HyperTangent(0.5))
-    model.add(Linear(1))
-    model.gradient_check(train_data[:, :-1], train_data[:, -1], generator.normal(size=model.tot_params))

@@ -24,8 +24,3 @@ def csv_import(targets: list[str, ...], path: str, dtype: np.dtype, remove_dup: 
 
     return list(ord_targets), out_array
 
-
-if __name__ == '__main__':
-    data = csv_import(['S', 'M'], '../data.txt', np.float32)
-
-

@@ -1,5 +1,4 @@
 import numpy as np
-# from ..data_import import csv_import
 
 from sklearn.metrics import pairwise_distances
 
@@ -256,23 +255,3 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return out
-
-
-if __name__ == '__main__':
-    from implementation.data_import import csv_import
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score
-    import numpy as np
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64, remove_dup=True)
-
-    x_train, x_test, y_train, y_test = train_test_split(train_data[:, :-1], train_data[:, -1], test_size=0.3)
-
-    model = RBF(train_data=x_train, units=500, sigma=0.5)
-
-    model.fit(y_train, epoch=500)
-
-    out = model.evaluate(x_test)
-
-    accuracy_score(np.where(out >= 0.5, 1, 0), y_test)

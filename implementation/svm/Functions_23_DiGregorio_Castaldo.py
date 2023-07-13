@@ -1,12 +1,9 @@
 from abc import abstractmethod
-
 import numpy as np
 from sklearn.metrics.pairwise import rbf_kernel
 from cvxopt.solvers import qp
 from cvxopt import matrix, spmatrix, solvers
-from typing import Optional, Self
-import sys
-from typing import Dict
+from typing import Optional, Dict
 
 
 class GaussianSVM:
@@ -133,15 +130,3 @@ class GaussianSVM:
         ...
 
 
-if __name__ == '__main__':
-    from implementation.data_import import csv_import
-
-    generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(["S", "M"], "../../data.txt", dtype=np.float64)
-    mask = train_data[:, -1] == 0
-    train_data[mask, -1] = -1
-    svm = GaussianSVM(gamma=0.5, inv_reg=0.1)
-    # dual_sol = svm.smo_fit(train_data[:, :-1], train_data[:, -1], 1e-5, 1e5)
-    dual_sol_cvxopt = svm.cvxopt_fit(train_data[:, :-1], train_data[:, -1])
-    svm.predict(train_data[:, :-1])
-    print(dual_sol)
