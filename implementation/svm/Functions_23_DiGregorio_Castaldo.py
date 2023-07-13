@@ -122,9 +122,8 @@ class GaussianSVM:
             raise AttributeError('The necessary attributes for predicting are not initialized, this means \n'
                                  'that you have not fitted the SVM model first. Fit the model, then try again.')
         inner_prods = rbf_kernel(self.support, data, gamma=self.gamma)
-        preds = np.sign(np.sum(inner_prods*self.support_labels[:, np.newaxis]*self.support_dual_vars[:, np.newaxis] +
-                               self.intercept,
-                               axis=0))
+        preds = np.sign(np.sum(inner_prods*self.support_labels[:, np.newaxis]*self.support_dual_vars[:, np.newaxis],
+                               axis=0)+self.intercept)
         return preds
 
     @abstractmethod
