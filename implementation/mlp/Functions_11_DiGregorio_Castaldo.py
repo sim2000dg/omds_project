@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Self, Optional, Iterator
+from typing import Optional, Iterator
 from scipy.optimize import OptimizeResult
 import math
 
@@ -71,7 +71,7 @@ class Linear:
         np.dot(upstream_gradient, np.transpose(self.weights), out=self.downstream)
         return self.downstream
 
-    def model_setup(self, batch_size: int, in_shape: int, rho: float) -> Self:
+    def model_setup(self, batch_size: int, in_shape: int, rho: float) -> 'Self':
         """
         Method called when connecting this module to a Model object. This method initializes the module and the
         necessary arrays and attributes needed for the forward and the backward pass.
@@ -158,7 +158,7 @@ class HyperTangent:
 
         return self.downstream
 
-    def model_setup(self, batch_size, in_shape, **kwargs) -> Self:
+    def model_setup(self, batch_size, in_shape, **kwargs) -> 'Self':
         """
         Method called when connecting this module to a Model object. This method initializes the module and the
         necessary arrays and attributes needed for the forward and the backward pass.
@@ -202,7 +202,7 @@ class Model:
         self.tot_params: int = 0
         self.gradient_vector: Optional[np.ndarray] = None
 
-    def add(self, layer: Linear | HyperTangent) -> Self:
+    def add(self, layer: Linear | HyperTangent) -> 'Self':
         """
         Method adding a layer to the model. The method also triggers layer initialization.
         :param layer: The layer object.

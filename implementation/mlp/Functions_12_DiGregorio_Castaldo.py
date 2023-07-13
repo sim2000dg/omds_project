@@ -237,7 +237,7 @@ class RBF:
 
         direction = - gradient
         k = 0 # number of evaluations of the loss function
-        for _ in range(max_iters):
+        while True:
             x_next = x_0 + alpha * direction
             loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
             k += 1
@@ -265,5 +265,3 @@ class RBF:
         return out
 
 
-
-if __name__ == '__main__':
