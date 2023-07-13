@@ -182,7 +182,11 @@ class RBF:
             loss_last = loss
 
             # Update of the weights vector
-            np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis], out=self.weights)
+            try :
+                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis], out=self.weights)
+            except np.linalg.LinAlgError:
+                raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
+                                 'linearly dependent)')
 
             # line search to find the optimal step size
             alpha = self.armijo_linesearch(labels, gradient_centroids, self.centroids)
@@ -211,7 +215,7 @@ class RBF:
 
     def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
                           alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,
-                          max_iters: int = 100) -> float:
+                          max_iters: int = 20) -> float:
         """
         Performing Armijo line search to determine the amount to move along a given search direction
         :param labels: The response data, as a 1-D NumPy array.
@@ -245,7 +249,7 @@ class RBF:
         :returns: The 1-D array of predictions.
         """
 
-        phi_mat = self.interpolation_mat(test_data, self.centroids)
+        phi_mat = np.sqrt(pairwise_distances(test_data, self.centroids) ** 2 + self.sigma ** 2)
 
         out = np.dot(phi_mat, self.weights)
         out = np.squeeze(out)
@@ -261,11 +265,11 @@ if __name__ == '__main__':
     import numpy as np
 
     generator = np.random.default_rng(1234)
-    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64)
+    labels, train_data = csv_import(['S', 'M'], '../../data.txt', dtype=np.float64, remove_dup=True)
 
     x_train, x_test, y_train, y_test = train_test_split(train_data[:, :-1], train_data[:, -1], test_size=0.3)
 
-    model = RBF(train_data=x_train, units=20, sigma=0.5, rho1=1e-3, rho2=1e-4)
+    model = RBF(train_data=x_train, units=500, sigma=0.5)
 
     model.fit(y_train, epoch=500)
 
