@@ -1,7 +1,5 @@
-from typing import Tuple
-
+from time import perf_counter
 import numpy as np
-
 from sklearn.metrics import pairwise_distances
 
 
@@ -35,11 +33,12 @@ class RBF:
         # array to avoid useless memory allocation
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
-    def evaluate_loss(self, labels: np.ndarray, epsilon: float = 1e-8,
+    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 1e-8,
                       centroids: np.ndarray = None) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
         Method evaluating the L2-penalized loss for the training data.
+        :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
         :param centroids: The centers took into account in the computation of the phi matrix. It is useful to avoid
         overwriting in the backtracking Line-search pipeline.
@@ -50,11 +49,11 @@ class RBF:
         # useful condition to perform gradient check and LineSearch in the fit method
         if centroids is not None:
             # Computation of the phi matrix using the Multiquadric radial basis function
-            phi_mat = np.sqrt(pairwise_distances(self.x, centroids) ** 2 + self.sigma ** 2)
+            phi_mat = np.sqrt(pairwise_distances(train_data, centroids) ** 2 + self.sigma ** 2)
             reg_centroids = np.linalg.norm(centroids) ** 2  # L2 regularization w.r.t. the centers
 
         else:
-            phi_mat = np.sqrt(pairwise_distances(self.x, self.centroids) ** 2 + self.sigma ** 2)
+            phi_mat = np.sqrt(pairwise_distances(train_data, self.centroids) ** 2 + self.sigma ** 2)
             reg_centroids = np.linalg.norm(self.centroids) ** 2
 
         out = np.dot(phi_mat, self.weights)
@@ -156,7 +155,7 @@ class RBF:
                 'The analytic gradient is  not correct !! The norm of the difference between the gradient approximation ' \
                 f'and the actual gradient is {numerator :09}')
 
-    def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, early_stopping: int = 20) -> tuple:
+    def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, early_stopping: int = 20) -> dict:
         """
         "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using
         the Newton-Raphson algorithm, where a single update is determined by evaluating the gradient and
@@ -178,14 +177,19 @@ class RBF:
         n_eval = 0  # Number of evaluation of the loss function
         conv_count = 0  # Counter for the stopping criterion condition
         es_counter = 0  # Counter for the early stopping criterion condition
-        loss_last = 0  # save the loss value at the previous iteration
+        loss_last = None  # save the loss value at the previous iteration
+        loss_init = None  # save the initial training loss
+        start = perf_counter()  # Start the time counter to optimize the network
+
         while True:
             loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(labels)
+            if loss_init is None:
+                loss_init = loss
             n_eval += 1
             loss_last = loss
 
             # Update of the weights vector
-            try :
+            try:
                 np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis]
                        , out=self.weights)
                 k += 1
@@ -215,13 +219,21 @@ class RBF:
             if conv_count > 5 or k == epoch or es_counter == early_stopping:
                 break
 
-        return (k, n_eval, loss, print('Early Stopping ...') if es_counter == early_stopping else None,
-                print(f'Training completed in {k} iterations') if conv_count != 5
-                else print(f'convergence reached in {k} iterations'))
+        end = perf_counter()  # Stop the time counter
+
+        return dict(n_iter=k,
+                    fun_evals=n_eval,
+                    fun_init=loss_init,
+                    fun=loss,
+                    time=round(end - start),
+                    early_stopping='Early Stopping ...' if es_counter == early_stopping
+                    else 'The optimization routine was not early stopped',
+                    message=print(f'Training completed in {k} iterations') if conv_count != 5
+                    else print(f'convergence reached in {k} iterations'))
 
     def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray, loss: float,
                           alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,
-                          max_iters: int = 20) -> tuple[float, int]:
+                          max_iters: int = 50) -> tuple[float, int]:
         """
         Performing Armijo line search to determine the amount to move along a given search direction
         :param labels: The response data, as a 1-D NumPy array.
@@ -236,13 +248,13 @@ class RBF:
         """
 
         direction = - gradient
-        k = 0 # number of evaluations of the loss function
+        k = 0  # number of evaluations of the loss function
         while True:
             x_next = x_0 + alpha * direction
             loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
             k += 1
 
-            if loss <= loss_next + alpha * c1 * np.dot(gradient.reshape(-1), direction.reshape(-1)):
+            if loss <= loss_next + alpha * c1 * np.dot(gradient.reshape(-1), direction.reshape(-1)) or k == max_iters:
                 break
             else:
                 alpha *= beta
@@ -263,5 +275,3 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return out
-
-
