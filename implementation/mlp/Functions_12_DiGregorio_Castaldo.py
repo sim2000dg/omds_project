@@ -1,6 +1,7 @@
 from time import perf_counter
 import numpy as np
 from sklearn.metrics import pairwise_distances
+from Functions_11_DiGregorio_Castaldo import HyperTangent
 
 
 class RBF:
@@ -34,7 +35,7 @@ class RBF:
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
     def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 1e-8,
-                      centroids: np.ndarray = None) -> tuple[
+                      centroids: np.ndarray = None, evaluate_gradients: bool = True) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
         Method evaluating the L2-penalized loss for the training data.
@@ -43,6 +44,7 @@ class RBF:
         :param centroids: The centers took into account in the computation of the phi matrix. It is useful to avoid
         overwriting in the backtracking Line-search pipeline.
         :param epsilon: A small value to prevent overflow issues with the exponential in the sigmoid.
+        :param evaluate_gradients: whether evaluate the gradients
         :return: A tuple with the value of the loss, the gradient vector w.r.t the centers, the gradient vector
         w.r.t. the weights, the Hessian matrix w.r.t the weights.
         """
@@ -65,6 +67,9 @@ class RBF:
         cross_entropy = -np.mean(labels * np.log(out + epsilon) + (1 - labels) * np.log(1 - (out - epsilon)))
         cross_entropy += self.rho1 * np.linalg.norm(self.weights) ** 2
         cross_entropy += self.rho2 * reg_centroids
+
+        if evaluate_gradients is False:
+            return cross_entropy
 
         # Cross-entropy gradient, taking into account epsilon
         downstream_grad = -labels / (out + epsilon) + (1 - labels) / (1 - (out - epsilon))
@@ -90,7 +95,7 @@ class RBF:
         """
         Returns the gradient for the hidden layer w.r.t the centers matrix
         :param upstream_gradient: The upstream gradient as a 2-D NumPy array
-        :param phi_mat: The design matrix tranformed as a 2-D Numpy array
+        :param phi_mat: The design matrix transformed as a 2-D Numpy array
         :return: The downstream gradient w.r.t the centers as a 2-D Numpy array
         """
         # save gradient w.r.t the phi matrix
@@ -125,8 +130,8 @@ class RBF:
             # adding epsilon to only one component of the entire vector of the parameters
             current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(labels, centroids=current_params_plus.reshape(self.centroids.shape),
-                                                   epsilon=1e-7)[0]
+            output_plus[elem] = self.evaluate_loss(self.x, labels, centroids=current_params_plus.reshape(self.centroids.shape),
+                                                   evaluate_gradients=False)
 
         output_minus = np.zeros(shape=self.centroids.size, dtype=np.float64)
         for elem in range(len(centers_flatten)):
@@ -134,13 +139,13 @@ class RBF:
             # subtracting epsilon to only one component of the entire vector of the parameters
             current_params_minus[elem] -= epsilon
             # start evaluate loss pipeline
-            output_minus[elem] = self.evaluate_loss(labels,
+            output_minus[elem] = self.evaluate_loss(self.x, labels,
                                                     centroids=current_params_minus.reshape(self.centroids.shape),
-                                                    epsilon=1e-7)[0]
+                                                    evaluate_gradients=False)
 
         grad_approx = (output_plus - output_minus) / (2 * epsilon)  # computing approximation for the gradient
         # start the pipeline to retrieve the backprop gradient
-        gradient = self.evaluate_loss(labels, epsilon=1e-7,
+        gradient = self.evaluate_loss(self.x, labels, epsilon=1e-7,
                                       centroids=centers_flatten.reshape(self.centroids.shape))[1].reshape(-1)
 
         # compute the Euclidean distance normalized
@@ -155,7 +160,8 @@ class RBF:
                 'The analytic gradient is  not correct !! The norm of the difference between the gradient approximation ' \
                 f'and the actual gradient is {numerator :09}')
 
-    def fit(self, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400, early_stopping: int = 20) -> dict:
+    def fit(self, train_data: np.ndarray, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400,
+            early_stopping: int = 5) -> dict:
         """
         "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using
         the Newton-Raphson algorithm, where a single update is determined by evaluating the gradient and
@@ -167,6 +173,7 @@ class RBF:
         However, every sequence {(w_k),(c_k)} admits an accumulation point, {E(w_k),(c_k)} converges and every
         accumulation point of {(w_k , c_k )} is a stationary point."
 
+        :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
         :param tol: A small constant for the stopping criterion
         :param epoch: The max number of iteration performed
@@ -182,7 +189,7 @@ class RBF:
         start = perf_counter()  # Start the time counter to optimize the network
 
         while True:
-            loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(labels)
+            loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(train_data, labels)
             if loss_init is None:
                 loss_init = loss
             n_eval += 1
@@ -190,17 +197,17 @@ class RBF:
 
             # Update of the weights vector
             try:
-                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis]
-                       , out=self.weights)
+                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis],
+                       out=self.weights)
                 k += 1
             except np.linalg.LinAlgError:
                 raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
                                  'linearly dependent)')
 
-            loss, gradient_centroids = self.evaluate_loss(labels)[0:2]
+            loss, gradient_centroids = self.evaluate_loss(train_data, labels)[0:2]
             n_eval += 1
             # line search to find the optimal step size
-            alpha, k_armijo = self.armijo_linesearch(labels, gradient_centroids, self.centroids, loss)
+            alpha, k_armijo = self.armijo_linesearch(train_data, labels, gradient_centroids, self.centroids, loss)
             n_eval += k_armijo
             # Update centers along the steepest descent direction
             self.centroids = self.centroids - alpha * gradient_centroids
@@ -222,6 +229,7 @@ class RBF:
         end = perf_counter()  # Stop the time counter
 
         return dict(n_iter=k,
+                    gradient_evals=k,
                     fun_evals=n_eval,
                     fun_init=loss_init,
                     fun=loss,
@@ -232,11 +240,13 @@ class RBF:
                     else print(f'convergence reached in {k} iterations'),
                     success=True)
 
-    def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray, loss: float,
+    def armijo_linesearch(self, train_data: np.ndarray, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
+                          loss: float,
                           alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,
                           max_iters: int = 50) -> tuple[float, int]:
         """
         Performing Armijo line search to determine the amount to move along a given search direction
+        :param train_data:
         :param labels: The response data, as a 1-D NumPy array.
         :param gradient: direction for the search
         :param x_0: The staring point
@@ -252,7 +262,7 @@ class RBF:
         k = 0  # number of evaluations of the loss function
         while True:
             x_next = x_0 + alpha * direction
-            loss_next = self.evaluate_loss(labels, centroids=x_next)[0]
+            loss_next = self.evaluate_loss(train_data, labels, centroids=x_next, evaluate_gradients=False)
             k += 1
 
             if loss <= loss_next + alpha * c1 * np.dot(gradient.reshape(-1), direction.reshape(-1)) or k == max_iters:
@@ -276,3 +286,4 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return out
+
