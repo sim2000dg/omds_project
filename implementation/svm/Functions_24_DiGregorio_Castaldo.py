@@ -101,6 +101,9 @@ class GaussianSVMComplete(GaussianSVM):
                 + labels[r_pick] * labels[s_pick]
             )
 
+            # proposal solution (i.e. vertex of the parabola)
+            prop = -lin_term / (2 * quad_term)
+
             if (
                 labels[r_pick] * labels[s_pick] > 0
             ):  # Check if labels are the same, then compute admissible interval
@@ -111,20 +114,14 @@ class GaussianSVMComplete(GaussianSVM):
                 upper = self.inv_reg - dual_vars[s_pick] + dual_vars[r_pick]
 
             admissible = np.array([max(0, lower), min(self.inv_reg, upper)])
-
-            # vertex of the parabola
-            vertex = -lin_term / (2 * quad_term)
-            if quad_term > 0:   # check whether parabola is convex
-                # If vertex is inside the admissible interval, vertex is the solution for the iteration
-                # On the contrary, if outside, get closer boundary point
-                if vertex < admissible[0]:
-                    dual_vars[r_pick] = admissible[0]
-                elif vertex > admissible[1]:
-                    dual_vars[r_pick] = admissible[1]
-                else:
-                    dual_vars[r_pick] = vertex
-            else:     # parabola is concave, get the farthest of the boundary points of the admissible interval
-                dual_vars[r_pick] = admissible[np.argmax(np.abs(vertex-admissible))]
+            # If prop is inside the admissible interval, prop is the solution for the iteration
+            # On the contrary, if outside, get closer boundary point
+            if prop < admissible[0]:
+                dual_vars[r_pick] = admissible[0]
+            elif prop > admissible[1]:
+                dual_vars[r_pick] = admissible[1]
+            else:
+                dual_vars[r_pick] = prop
 
             # Compute other variable after having solved for the first
             dual_vars[s_pick] = labels[s_pick] * (
