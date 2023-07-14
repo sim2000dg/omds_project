@@ -1,7 +1,6 @@
 from time import perf_counter
 import numpy as np
 from sklearn.metrics import pairwise_distances
-from Functions_11_DiGregorio_Castaldo import HyperTangent
 
 
 class RBF:
