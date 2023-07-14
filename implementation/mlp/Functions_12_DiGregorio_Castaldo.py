@@ -33,7 +33,7 @@ class RBF:
         # array to avoid useless memory allocation
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
-    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 1e-8,
+    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray,
                       centroids: np.ndarray = None, evaluate_gradients: bool = True) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -42,7 +42,6 @@ class RBF:
         :param labels: The response data, as a 1-D NumPy array.
         :param centroids: The centers took into account in the computation of the phi matrix. It is useful to avoid
         overwriting in the backtracking Line-search pipeline.
-        :param epsilon: A small value to prevent overflow issues with the exponential in the sigmoid.
         :param evaluate_gradients: whether evaluate the gradients
         :return: A tuple with the value of the loss, the gradient vector w.r.t the centers, the gradient vector
         w.r.t. the weights, the Hessian matrix w.r.t the weights.
@@ -63,7 +62,7 @@ class RBF:
 
         # Cross entropy loss + regularization, taking into account epsilon to avoid overflow and
         # invalid arguments in Numpy.log
-        cross_entropy = -np.mean(labels * np.log(out + epsilon) + (1 - labels) * np.log(1 - (out - epsilon)))
+        cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out))
         cross_entropy += self.rho1 * np.linalg.norm(self.weights) ** 2
         cross_entropy += self.rho2 * reg_centroids
 
@@ -71,7 +70,7 @@ class RBF:
             return cross_entropy
 
         # Cross-entropy gradient, taking into account epsilon
-        downstream_grad = -labels / (out + epsilon) + (1 - labels) / (1 - (out - epsilon))
+        downstream_grad = -labels / out + (1 - labels) / (1 - out)
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1 - out)) * downstream_grad
 
@@ -80,11 +79,11 @@ class RBF:
                                            phi_mat)
 
         # Analytic gradient w.r.t the weights vector
-        gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels))
+        gradient_weights = np.dot(phi_mat.T, (out - labels)) / self.x.shape[0]
         np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
 
         # Analytic hessian w.r.t the weights vector
-        hessian_weights = phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat
+        hessian_weights = (phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat) / self.x.shape[0]
         hessian_weights[np.diag_indices(self.units)] += 2 * self.rho1
 
         return cross_entropy, gradient_centroids, gradient_weights, hessian_weights
@@ -230,12 +229,13 @@ class RBF:
         return dict(n_iter=k,
                     gradient_evals=k,
                     fun_evals=n_eval,
-                    fun_init=loss_init,
-                    fun=loss,
+                    init_train_error=loss_init,
+                    final_train_error=loss,
                     time=round(end - start, 3),
+                    opt_method='Netwon/Armijo',
                     early_stopping='Early Stopping ...' if es_counter == early_stopping
                     else 'The optimization routine was not early stopped',
-                    message= f'Training completed in {k} iterations' if conv_count != 5
+                    message=f'Training completed in {k} iterations' if conv_count != 5
                     else f'convergence reached in {k} iterations',
                     success=True)
 
@@ -286,3 +286,12 @@ class RBF:
 
         return np.where(out >= 0.5, 1, 0)
 
+
+if __name__ == '__main__':
+    from implementation.data_import import csv_import
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score
+
+    labs, complete_data = csv_import(["D", "C"], "../../data.txt", dtype=np.float64)
+    X_train, X_test, y_train, y_test = train_test_split(complete_data[:, :-1], complete_data[:, -1], test_size=0.2,
+                                                        shuffle=True, random_state=1234)
