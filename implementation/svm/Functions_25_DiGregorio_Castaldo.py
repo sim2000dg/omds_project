@@ -72,11 +72,11 @@ class MulticlassSVM:
         """
         pred_list = []
         for i, model in enumerate(self.models):  # Get predictions from each model
-            pred_list.append(model.predict(data))
+            pred_list.append(model.predict(data, score=True))  # Get score returned
         preds = np.column_stack(pred_list)  # Column stacking of predictions
-        preds = np.argmax(
-            preds, axis=1
-        )  # For each row, get the argmax, i.e. the index with value 1
+        # We always get the class having the higher score, this covers all the situations we can face
+        preds = np.argmax(preds, axis=1)
+
         return np.array(
             [self.encoder.classes_[x] for x in preds]
         )  # Decode the response and return

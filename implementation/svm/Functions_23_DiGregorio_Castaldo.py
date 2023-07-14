@@ -97,7 +97,7 @@ class GaussianSVM:
         )  # Save intercept
 
         # Compute KKT violation in the usual way, we need to add some tolerance here since the solver does not set
-        # precisely to the boundary the dual variables; an absolute tolerance of 10^-6 is chosen to tackle this.
+        # precisely to the boundary the dual variables; an absolute tolerance of 10^-6*C is chosen to tackle this.
         check_viol = -((gram @ dual_vars) - 1) / labels
         mask_zero = ~support_mask
         mask_reg = np.isclose(dual_vars, self.inv_reg, atol=1e-6, rtol=1e-10)
@@ -116,10 +116,11 @@ class GaussianSVM:
         }  # Return dictionary
         return opt_dict
 
-    def predict(self, data: np.ndarray) -> np.ndarray:
+    def predict(self, data: np.ndarray, score: bool = False) -> np.ndarray:
         """
         Prediction method for the fitted object. Raises an error if called without fitting (obviously).
         :param data: The data to predict on.
+        :param score: Whether to return the decision function instead of its sign. Defaults to False.
         :return: The array of predictions.
         """
         if self.support is None:
@@ -128,15 +129,13 @@ class GaussianSVM:
                 "that you have not fitted the SVM model first. Fit the model, then try again."
             )
         inner_prods = rbf_kernel(self.support, data, gamma=self.gamma)
-        preds = np.sign(
-            np.sum(
+        preds = np.sum(
                 inner_prods
                 * self.support_labels[:, np.newaxis]
                 * self.support_dual_vars[:, np.newaxis],
                 axis=0,
-            )
-            + self.intercept
-        )
+            ) + self.intercept
+        preds = np.sign(preds) if not score else preds
         return preds
 
     @abstractmethod
