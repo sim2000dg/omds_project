@@ -235,8 +235,8 @@ class RBF:
                     time=round(end - start, 3),
                     early_stopping='Early Stopping ...' if es_counter == early_stopping
                     else 'The optimization routine was not early stopped',
-                    message=print(f'Training completed in {k} iterations') if conv_count != 5
-                    else print(f'convergence reached in {k} iterations'),
+                    message= f'Training completed in {k} iterations' if conv_count != 5
+                    else f'convergence reached in {k} iterations',
                     success=True)
 
     def armijo_linesearch(self, train_data: np.ndarray, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray,
