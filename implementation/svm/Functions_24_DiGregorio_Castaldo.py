@@ -18,7 +18,7 @@ class GaussianSVMComplete(GaussianSVM):
         :param max_iter: The maximum number of iterations.
         :return: The dictionary with information on the optimization process.
         """
-        start = time.time()  # Timer start
+        start = time.process_time()  # Timer start
         if not np.all(np.sort(np.unique(labels)) == [-1, 1]):
             raise ValueError("The labels need to have a \{-1, 1\} encoding.")
 
@@ -151,7 +151,7 @@ class GaussianSVMComplete(GaussianSVM):
             if it == max_iter:  # Check maximum number of iterations
                 break
 
-        elapsed = time.time() - start
+        elapsed = time.process_time() - start
         # Mask for support
         support_mask = ~np.isclose(
             dual_vars, 0, rtol=1e-10, atol=1e-6

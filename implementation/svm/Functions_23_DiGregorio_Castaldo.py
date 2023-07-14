@@ -73,9 +73,9 @@ class GaussianSVM:
         }  # Dict for setting the initial values for the solver
 
         solvers.options["show_progress"] = False
-        start = time.time()  # Timer start
+        start = time.process_time()  # Timer start
         dual_sol = qp(gram, q, G, h, A, b, initvals=init_vars)
-        elapsed = time.time() - start  # Timer end
+        elapsed = time.process_time() - start  # Timer end
 
         dual_vars = np.squeeze(np.array(dual_sol["x"]))  # Get solution of the dual
         support_mask = ~np.isclose(
