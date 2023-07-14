@@ -33,7 +33,7 @@ class RBF:
         # array to avoid useless memory allocation
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
-    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 1e-8,
+    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 0,
                       centroids: np.ndarray = None, evaluate_gradients: bool = True) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -285,4 +285,3 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return np.where(out >= 0.5, 1, 0)
-
