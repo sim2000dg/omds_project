@@ -230,9 +230,10 @@ class RBF:
         return dict(n_iter=k,
                     gradient_evals=k,
                     fun_evals=n_eval,
-                    fun_init=loss_init,
-                    fun=loss,
+                    init_train_error=loss_init,
+                    final_train_error=loss,
                     time=round(end - start, 3),
+                    opt_method='Netwon/Armijo',
                     early_stopping='Early Stopping ...' if es_counter == early_stopping
                     else 'The optimization routine was not early stopped',
                     message=f'Training completed in {k} iterations' if conv_count != 5

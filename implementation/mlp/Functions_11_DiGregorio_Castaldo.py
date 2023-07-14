@@ -469,10 +469,12 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
 
     return OptimizeResult(
         x=x0,
-        fun=loss,
-        fun_init=loss_init,
+        final_train_error=loss,
+        init_train_error=loss_init,
         jac=gradient,
-        nit=i if status is True else i - 1,
+        opt_method='Adam',
+        fun_evals=i if status is True else i - 1,
+        grad_evals=i if status is True else i - 1,
         time=round(end-start, 3),
         message="Training completed" if status is True else "Convergence reached",
         success=True,
