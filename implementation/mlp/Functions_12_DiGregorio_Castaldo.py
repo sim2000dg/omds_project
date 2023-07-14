@@ -80,11 +80,11 @@ class RBF:
                                            phi_mat)
 
         # Analytic gradient w.r.t the weights vector
-        gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels))
+        gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels)) /self.x.shape[0]
         np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
 
         # Analytic hessian w.r.t the weights vector
-        hessian_weights = phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat
+        hessian_weights = (phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat) / self.x.shape[0]
         hessian_weights[np.diag_indices(self.units)] += 2 * self.rho1
 
         return cross_entropy, gradient_centroids, gradient_weights, hessian_weights
@@ -235,7 +235,7 @@ class RBF:
                     time=round(end - start, 3),
                     early_stopping='Early Stopping ...' if es_counter == early_stopping
                     else 'The optimization routine was not early stopped',
-                    message= f'Training completed in {k} iterations' if conv_count != 5
+                    message=f'Training completed in {k} iterations' if conv_count != 5
                     else f'convergence reached in {k} iterations',
                     success=True)
 
