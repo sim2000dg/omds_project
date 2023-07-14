@@ -10,7 +10,6 @@ class MulticlassSVM:
     (easily extendable to any number of classes). It simply relies on the SVM specification already implemented
     in other modules.
     """
-
     def __init__(self, gamma, inv_reg) -> None:
         """
         Initialization of a Support Vector classifier for three classes problems.
@@ -72,8 +71,6 @@ class MulticlassSVM:
         :return: A vector of decoded predictions.
         """
         pred_list = []
-        response_data = self.encoder.transform(data[:, -1])
-        data = np.concatenate([data[:, :-1], response_data], axis=1)
         for i, model in enumerate(self.models):  # Get predictions from each model
             pred_list.append(model.predict(data[:, :-3]))
         preds = np.column_stack(pred_list)  # Column stacking of predictions
