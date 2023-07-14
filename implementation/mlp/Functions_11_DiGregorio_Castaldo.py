@@ -372,7 +372,7 @@ class Model:
                 output = (output - 1) / (output + 1)
 
         output = 1 / (1 + np.exp(-output))
-        return output
+        return np.where(output >= 0.5, 1, 0)
 
     def batch_yielder(self, train_data, labels):
         num_batch = len(train_data) // self.batch_size

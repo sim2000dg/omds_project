@@ -284,5 +284,5 @@ class RBF:
         out = np.squeeze(out)
         out = 1 / (1 + np.exp(-out))
 
-        return out
+        return np.where(out >= 0.5, 1, 0)
 
