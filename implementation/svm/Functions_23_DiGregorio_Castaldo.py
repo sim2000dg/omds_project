@@ -12,7 +12,7 @@ class GaussianSVM:
     Class implementing a Gaussian Kernel SVM, the available fit uses cvxopt and the optimization of the dual problem.
     """
 
-    def __init__(self, inv_reg, gamma):
+    def __init__(self, inv_reg, gamma) -> None:
         """
         Initialization of a Gaussian kernel SVM object. `inv_reg`  is the inverse regularization coefficient and `gamma`
         is an hyperparameter of the gaussian kernel inducing the implicit mapping of the feature vectors to the unit
@@ -47,7 +47,9 @@ class GaussianSVM:
             tc="d",
         )
         A = matrix(labels[np.newaxis, :])  # Equality constraints matrix, a row vector
-        q = matrix(-np.ones(len(labels), dtype=np.float64))  # Linear term of the objective function
+        q = matrix(
+            -np.ones(len(labels), dtype=np.float64)
+        )  # Linear term of the objective function
         b = matrix([0], tc="d")  # Equality constraint value, a single zero
         h = matrix(
             np.concatenate(
@@ -66,15 +68,19 @@ class GaussianSVM:
             J=2 * list(range(len(labels))),
             tc="d",
         )
-        init_vars = {"x": matrix(np.zeros(len(labels)), tc="d")}  # Dict for setting the initial values for the solver
+        init_vars = {
+            "x": matrix(np.zeros(len(labels)), tc="d")
+        }  # Dict for setting the initial values for the solver
 
-        solvers.options['show_progress'] = False
+        solvers.options["show_progress"] = False
         start = time.time()  # Timer start
         dual_sol = qp(gram, q, G, h, A, b, initvals=init_vars)
-        elapsed = time.time()-start  # Timer end
+        elapsed = time.time() - start  # Timer end
 
         dual_vars = np.squeeze(np.array(dual_sol["x"]))  # Get solution of the dual
-        support_mask = ~np.isclose(dual_vars, 0, rtol=1e-10, atol=1e-6)  # Mask for support vectors
+        support_mask = ~np.isclose(
+            dual_vars, 0, rtol=1e-10, atol=1e-6
+        )  # Mask for support vectors
         mid_mask = support_mask & (
             ~np.isclose(dual_vars, self.inv_reg, rtol=1e-10, atol=1e-6)
         )  # Mask for support vectors that we are sure are not misclassified and are useful to get b out
@@ -92,16 +98,14 @@ class GaussianSVM:
 
         # Compute KKT violation in the usual way, we need to add some tolerance here since the solver does not set
         # precisely to the boundary the dual variables; an absolute tolerance of 10^-6 is chosen to tackle this.
-        check_viol = -((gram @ dual_vars) - 1)/labels
+        check_viol = -((gram @ dual_vars) - 1) / labels
         mask_zero = ~support_mask
         mask_reg = np.isclose(dual_vars, self.inv_reg, atol=1e-6, rtol=1e-10)
-        mask_r = (mask_zero & (labels == 1)) | (mask_reg & (labels == - 1))
-        mask_s = (mask_zero & (labels == -1)) | (mask_reg & (labels == + 1))
+        mask_r = (mask_zero & (labels == 1)) | (mask_reg & (labels == -1))
+        mask_s = (mask_zero & (labels == -1)) | (mask_reg & (labels == +1))
         r_set = mid_mask | mask_r
         s_set = mid_mask | mask_s
-        violation = np.max(check_viol[r_set])-np.min(check_viol[s_set])
-
-
+        violation = np.max(check_viol[r_set]) - np.min(check_viol[s_set])
 
         opt_dict = {
             "InitObj": float(0),
@@ -112,24 +116,31 @@ class GaussianSVM:
         }  # Return dictionary
         return opt_dict
 
-    def predict(self, data: np.ndarray):
+    def predict(self, data: np.ndarray) -> np.ndarray:
         """
         Prediction method for the fitted object. Raises an error if called without fitting (obviously).
         :param data: The data to predict on.
         :return: The array of predictions.
         """
         if self.support is None:
-            raise AttributeError('The necessary attributes for predicting are not initialized, this means \n'
-                                 'that you have not fitted the SVM model first. Fit the model, then try again.')
+            raise AttributeError(
+                "The necessary attributes for predicting are not initialized, this means \n"
+                "that you have not fitted the SVM model first. Fit the model, then try again."
+            )
         inner_prods = rbf_kernel(self.support, data, gamma=self.gamma)
-        preds = np.sign(np.sum(inner_prods*self.support_labels[:, np.newaxis]*self.support_dual_vars[:, np.newaxis],
-                               axis=0)+self.intercept)
+        preds = np.sign(
+            np.sum(
+                inner_prods
+                * self.support_labels[:, np.newaxis]
+                * self.support_dual_vars[:, np.newaxis],
+                axis=0,
+            )
+            + self.intercept
+        )
         return preds
 
     @abstractmethod
     def smo_fit(
         self, train_data: np.ndarray, labels: np.ndarray, tol: float, max_iter: int
-    ):
+    ) -> Dict:
         ...
-
-

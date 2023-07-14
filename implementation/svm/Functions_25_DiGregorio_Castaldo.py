@@ -10,15 +10,20 @@ class MulticlassSVM:
     (easily extendable to any number of classes). It simply relies on the SVM specification already implemented
     in other modules.
     """
-    def __init__(self, gamma, inv_reg):
+
+    def __init__(self, gamma, inv_reg) -> None:
         """
         Initialization of a Support Vector classifier for three classes problems.
         :param gamma: The gamma hyperparameter for the Gaussian kernel.
         :param inv_reg: The inverse regularization term, a linear scaling on the hinge loss of the binary problem.
         """
         # Initialize list of SVM model objects
-        self.models: list[GaussianSVMComplete, ...] = [GaussianSVMComplete(inv_reg, gamma) for x in range(3)]
-        self.encoder: Optional[LabelBinarizer] = None  # Encoder object for labels, initialized later on
+        self.models: list[GaussianSVMComplete, ...] = [
+            GaussianSVMComplete(inv_reg, gamma) for x in range(3)
+        ]
+        self.encoder: Optional[
+            LabelBinarizer
+        ] = None  # Encoder object for labels, initialized later on
 
     def fit(self, train_data: np.ndarray, tol: float, max_iter: int) -> Dict:
         """
@@ -38,20 +43,29 @@ class MulticlassSVM:
         opt_status = list()
         # Fit three different models, each on a different column of the encoded response array (implicitly one vs. all)
         for i, model in enumerate(self.models):
-            opt_status.append(model.smo_fit(train_data[:, :-3], train_data[:, -3+i], tol=tol, max_iter=max_iter))
+            opt_status.append(
+                model.smo_fit(
+                    train_data[:, :-3],
+                    train_data[:, -3 + i],
+                    tol=tol,
+                    max_iter=max_iter,
+                )
+            )
 
         tot_time = 0
         difference = 0
         tot_iter = 0
         for i in range(3):
-            tot_time += opt_status[i]['Time']
-            difference += opt_status[i]['KKTViolation']
-            tot_iter += opt_status[i]['Iterations']
-        return {'TotalTime': tot_time,
-                'AverageDifference': difference/3,
-                'TotalIter': tot_iter}
+            tot_time += opt_status[i]["Time"]
+            difference += opt_status[i]["KKTViolation"]
+            tot_iter += opt_status[i]["Iterations"]
+        return {
+            "TotalTime": tot_time,
+            "AverageDifference": difference / 3,
+            "TotalIter": tot_iter,
+        }
 
-    def predict(self, data: np.ndarray):
+    def predict(self, data: np.ndarray) -> np.ndarray:
         """
         Prediction method for the three-class Gaussian SVM.
         :data: The data to predict on, last column is expected to hold the response variable.
@@ -63,5 +77,9 @@ class MulticlassSVM:
         for i, model in enumerate(self.models):  # Get predictions from each model
             pred_list.append(model.predict(data[:, :-3]))
         preds = np.column_stack(pred_list)  # Column stacking of predictions
-        preds = np.argmax(preds, axis=1)  # For each row, get the argmax, i.e. the index with value 1
-        return np.array([self.encoder.classes_[x] for x in preds])  # Decode the response and return
+        preds = np.argmax(
+            preds, axis=1
+        )  # For each row, get the argmax, i.e. the index with value 1
+        return np.array(
+            [self.encoder.classes_[x] for x in preds]
+        )  # Decode the response and return
