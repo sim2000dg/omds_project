@@ -72,7 +72,7 @@ class MulticlassSVM:
         """
         pred_list = []
         for i, model in enumerate(self.models):  # Get predictions from each model
-            pred_list.append(model.predict(data[:, :-3]))
+            pred_list.append(model.predict(data))
         preds = np.column_stack(pred_list)  # Column stacking of predictions
         preds = np.argmax(
             preds, axis=1
