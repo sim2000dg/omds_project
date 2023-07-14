@@ -78,11 +78,11 @@ class RBF:
         gradient_centroids = self.backprop(downstream_grad[:, np.newaxis],
                                            phi_mat)
 
-        # Analytic gradient w.r.t the weights vector
+        # Analytic gradient w.r.t the weights vector divided by the batch size
         gradient_weights = np.dot(phi_mat.T, (out - labels)) / self.x.shape[0]
         np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
 
-        # Analytic hessian w.r.t the weights vector
+        # Analytic hessian w.r.t the weights vector divided by the batch size
         hessian_weights = (phi_mat.T @ np.diag(out * (1 - out)) @ phi_mat) / self.x.shape[0]
         hessian_weights[np.diag_indices(self.units)] += 2 * self.rho1
 
