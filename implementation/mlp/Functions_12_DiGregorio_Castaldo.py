@@ -33,7 +33,7 @@ class RBF:
         # array to avoid useless memory allocation
         self.store = np.zeros(shape=(train_data.shape[0], units, train_data.shape[1]), dtype=np.float64)
 
-    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray, epsilon: float = 0,
+    def evaluate_loss(self, train_data: np.ndarray, labels: np.ndarray,
                       centroids: np.ndarray = None, evaluate_gradients: bool = True) -> tuple[
         float, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -42,7 +42,6 @@ class RBF:
         :param labels: The response data, as a 1-D NumPy array.
         :param centroids: The centers took into account in the computation of the phi matrix. It is useful to avoid
         overwriting in the backtracking Line-search pipeline.
-        :param epsilon: A small value to prevent overflow issues with the exponential in the sigmoid.
         :param evaluate_gradients: whether evaluate the gradients
         :return: A tuple with the value of the loss, the gradient vector w.r.t the centers, the gradient vector
         w.r.t. the weights, the Hessian matrix w.r.t the weights.
@@ -63,7 +62,7 @@ class RBF:
 
         # Cross entropy loss + regularization, taking into account epsilon to avoid overflow and
         # invalid arguments in Numpy.log
-        cross_entropy = -np.mean(labels * np.log(out + epsilon) + (1 - labels) * np.log(1 - (out - epsilon)))
+        cross_entropy = -np.mean(labels * np.log(out) + (1 - labels) * np.log(1 - out))
         cross_entropy += self.rho1 * np.linalg.norm(self.weights) ** 2
         cross_entropy += self.rho2 * reg_centroids
 
@@ -71,7 +70,7 @@ class RBF:
             return cross_entropy
 
         # Cross-entropy gradient, taking into account epsilon
-        downstream_grad = -labels / (out + epsilon) + (1 - labels) / (1 - (out - epsilon))
+        downstream_grad = -labels / out + (1 - labels) / (1 - out)
         # Downstream grad for the rest of the backprop, exploiting the nice analytical shape of the sigmoid derivative
         downstream_grad = (out * (1 - out)) * downstream_grad
 
@@ -80,7 +79,7 @@ class RBF:
                                            phi_mat)
 
         # Analytic gradient w.r.t the weights vector
-        gradient_weights = np.dot(phi_mat.T, ((out + epsilon) - labels)) /self.x.shape[0]
+        gradient_weights = np.dot(phi_mat.T, (out - labels)) / self.x.shape[0]
         np.add(2 * self.rho1 * self.weights.reshape(-1), gradient_weights, out=gradient_weights)
 
         # Analytic hessian w.r.t the weights vector
