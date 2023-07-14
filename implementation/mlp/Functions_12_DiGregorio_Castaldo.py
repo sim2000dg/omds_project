@@ -225,11 +225,12 @@ class RBF:
                     fun_evals=n_eval,
                     fun_init=loss_init,
                     fun=loss,
-                    time=round(end - start),
+                    time=round(end - start, 3),
                     early_stopping='Early Stopping ...' if es_counter == early_stopping
                     else 'The optimization routine was not early stopped',
                     message=print(f'Training completed in {k} iterations') if conv_count != 5
-                    else print(f'convergence reached in {k} iterations'))
+                    else print(f'convergence reached in {k} iterations'),
+                    success=True)
 
     def armijo_linesearch(self, labels: np.ndarray, gradient: np.ndarray, x_0: np.ndarray, loss: float,
                           alpha: float = 1.0, beta: float = 0.5, c1: float = 1e-3,

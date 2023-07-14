@@ -2,6 +2,7 @@ import numpy as np
 from typing import Optional, Iterator
 from scipy.optimize import OptimizeResult
 import math
+from time import perf_counter
 
 
 # Credits to Prof. Galasso's slides for guidelines for efficient backpropagation
@@ -447,6 +448,7 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
     s = np.zeros_like(x0)
     i = 0
     loss_init = None
+    start = perf_counter()
     while True:
         loss, gradient, status = fun(x0, *args)
         if loss_init is None:
@@ -463,12 +465,15 @@ def Adam_sciPy(fun, x0, args, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, **kwar
         if status is True:
             break
 
+    end = perf_counter()
+
     return OptimizeResult(
         x=x0,
         fun=loss,
         fun_init=loss_init,
         jac=gradient,
         nit=i if status is True else i - 1,
+        time=round(end-start, 3),
         message="Training completed" if status is True else "Convergence reached",
         success=True,
     )
