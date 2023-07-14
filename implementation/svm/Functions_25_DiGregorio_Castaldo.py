@@ -10,6 +10,7 @@ class MulticlassSVM:
     (easily extendable to any number of classes). It simply relies on the SVM specification already implemented
     in other modules.
     """
+
     def __init__(self, gamma, inv_reg) -> None:
         """
         Initialization of a Support Vector classifier for three classes problems.

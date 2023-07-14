@@ -129,12 +129,15 @@ class GaussianSVM:
                 "that you have not fitted the SVM model first. Fit the model, then try again."
             )
         inner_prods = rbf_kernel(self.support, data, gamma=self.gamma)
-        preds = np.sum(
+        preds = (
+            np.sum(
                 inner_prods
                 * self.support_labels[:, np.newaxis]
                 * self.support_dual_vars[:, np.newaxis],
                 axis=0,
-            ) + self.intercept
+            )
+            + self.intercept
+        )
         preds = np.sign(preds) if not score else preds
         return preds
 
