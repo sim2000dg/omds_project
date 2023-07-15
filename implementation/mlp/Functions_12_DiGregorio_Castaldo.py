@@ -295,20 +295,3 @@ class RBF:
 
         return np.where(out >= 0.5, 1, 0)
 
-
-if __name__ == '__main__':
-    from implementation.data_import import csv_import
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score
-
-    labs, complete_data = csv_import(["D", "C"], "../../data.txt", dtype=np.float64, remove_dup=True)
-    X_train, X_test, y_train, y_test = train_test_split(complete_data[:, :-1], complete_data[:, -1], test_size=0.2,
-                                                        shuffle=True, random_state=1234)
-
-    model = RBF(X_train, units=50, rho1=1e-4, rho2=0)
-
-    res = model.fit(X_train, y_train)
-
-    out = model.evaluate(X_test)
-
-    accuracy_score(out, y_test)
