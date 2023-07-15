@@ -128,7 +128,8 @@ class RBF:
             # adding epsilon to only one component of the entire vector of the parameters
             current_params_plus[elem] += epsilon  # adding epsilon to only one component of the entire vector of the
             # start evaluate loss pipeline
-            output_plus[elem] = self.evaluate_loss(self.x, labels, centroids=current_params_plus.reshape(self.centroids.shape),
+            output_plus[elem] = self.evaluate_loss(self.x, labels,
+                                                   centroids=current_params_plus.reshape(self.centroids.shape),
                                                    evaluate_gradients=False)
 
         output_minus = np.zeros(shape=self.centroids.size, dtype=np.float64)
@@ -158,7 +159,7 @@ class RBF:
                 'The analytic gradient is  not correct !! The norm of the difference between the gradient approximation ' \
                 f'and the actual gradient is {numerator :09}')
 
-    def fit(self, train_data: np.ndarray, labels: np.ndarray, tol: float = 1e-4, epoch: int = 400,
+    def fit(self, train_data: np.ndarray, labels: np.ndarray, tol: float = 1e-3, max_iter: int = 400,
             early_stopping: int = 5) -> dict:
         """
         "The fit method implements the 2-blocks decomposition algorithm. The weights vector is updated using
@@ -174,12 +175,13 @@ class RBF:
         :param train_data: The training data, as a NumPy array.
         :param labels: The response data, as a 1-D NumPy array.
         :param tol: A small constant for the stopping criterion
-        :param epoch: The max number of iteration performed
+        :param max_iter: The max number of iteration performed
         :param early_stopping: The maximum number of iterations allowed without any improvement.
         :return The number of iteration, the value of the loss and the reason for stopping.
         """
         k = 0  # Iterations of the algorithm
-        n_eval = 0  # Number of evaluation of the loss function
+        n_loss = 0  # Number of evaluation of the loss function
+        n_gradient = 0  # Number of evaluation of the gradient
         conv_count = 0  # Counter for the stopping criterion condition
         es_counter = 0  # Counter for the early stopping criterion condition
         loss_last = None  # save the loss value at the previous iteration
@@ -187,28 +189,36 @@ class RBF:
         start = perf_counter()  # Start the time counter to optimize the network
 
         while True:
-            loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(train_data, labels)
-            if loss_init is None:
-                loss_init = loss
-            n_eval += 1
-            loss_last = loss
+            loss_last = self.evaluate_loss(train_data, labels)[0]
+            while True:
+                loss, gradient_centroids, gradient_weights, hessian_weights = self.evaluate_loss(train_data, labels)
+                if loss_init is None:
+                    loss_init = loss
+                n_loss += 1
+                n_gradient += 1
 
-            # Update of the weights vector
-            try:
-                np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis],
-                       out=self.weights)
-                k += 1
-            except np.linalg.LinAlgError:
-                raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
-                                 'linearly dependent)')
+                # Update of the weights vector
+                try:
+                    np.add(self.weights, np.linalg.solve(hessian_weights, - gradient_weights)[:, np.newaxis],
+                           out=self.weights)
+
+                except np.linalg.LinAlgError:
+                    raise ValueError('Regularization on weights vector is too low (i.e. the outputs of the RBFs are '
+                                     'linearly dependent)')
+                if np.isclose(np.linalg.norm(gradient_weights), 0, atol=tol):
+                    break
 
             loss, gradient_centroids = self.evaluate_loss(train_data, labels)[0:2]
-            n_eval += 1
+
+            n_loss += 1
+            n_gradient += 1
+
             # line search to find the optimal step size
             alpha, k_armijo = self.armijo_linesearch(train_data, labels, gradient_centroids, self.centroids, loss)
-            n_eval += k_armijo
+            n_loss += k_armijo
             # Update centers along the steepest descent direction
             self.centroids = self.centroids - alpha * gradient_centroids
+
             k += 1
 
             # Condition for early stopping criterion
@@ -218,17 +228,16 @@ class RBF:
             # Condition for the stopping criterion of the algorithm
             conv_count = conv_count + 1 if (
                     np.isclose(np.linalg.norm(gradient_centroids), 0, atol=tol)
-                    and np.isclose(np.linalg.norm(gradient_weights), 0, atol=tol)) \
-                else 0
+                    and np.isclose(np.linalg.norm(gradient_weights), 0, atol=tol)) else 0
 
-            if conv_count > 5 or k == epoch or es_counter == early_stopping:
+            if conv_count > 5 or k == max_iter or es_counter == early_stopping:
                 break
 
         end = perf_counter()  # Stop the time counter
 
         return dict(n_iter=k,
-                    gradient_evals=k,
-                    fun_evals=n_eval,
+                    gradient_evals=n_gradient,
+                    fun_evals=n_loss,
                     init_train_error=loss_init,
                     final_train_error=loss,
                     time=round(end - start, 3),
@@ -285,3 +294,21 @@ class RBF:
         out = 1 / (1 + np.exp(-out))
 
         return np.where(out >= 0.5, 1, 0)
+
+
+if __name__ == '__main__':
+    from implementation.data_import import csv_import
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score
+
+    labs, complete_data = csv_import(["D", "C"], "../../data.txt", dtype=np.float64, remove_dup=True)
+    X_train, X_test, y_train, y_test = train_test_split(complete_data[:, :-1], complete_data[:, -1], test_size=0.2,
+                                                        shuffle=True, random_state=1234)
+
+    model = RBF(X_train, units=50, rho1=1e-4, rho2=0)
+
+    res = model.fit(X_train, y_train)
+
+    out = model.evaluate(X_test)
+
+    accuracy_score(out, y_test)
