@@ -1,4 +1,5 @@
-# Optimization Methods for Data Science Final Project / Data Science @Sapienza
+# Optimization Methods for Data Science Final Project
+## Data Science @Sapienza
 
 This repository contains the following:
 - The `implementation` package, with sub-packages dedicated to Kernel-based Support Vector Machines and Multilayer Perceptron Networks + Radial Basis Function Networks.
